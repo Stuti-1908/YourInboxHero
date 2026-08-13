@@ -36,15 +36,13 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router, prefix="")
 app.include_router(health_router, prefix="")
 
-from src.api.debtor_create import router as debtor_create_router
+from src.api.debtor import router as debtor_router
 from src.api.invoice_create import router as invoice_create_router
-from src.api.debtor_list import router as debtor_list_router
 
 # Protected routes
 app.include_router(reminder_manual_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(invoice_pause_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(reminder_history_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(invoice_list_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(debtor_create_router, prefix="", dependencies=[Depends(get_current_user)])
+app.include_router(debtor_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(invoice_create_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(debtor_list_router, prefix="", dependencies=[Depends(get_current_user)])

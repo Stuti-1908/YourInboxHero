@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -46,3 +47,18 @@ def create_debtor(request: DebtorCreateRequest, db: Session = Depends(get_db), c
         "phone": new_debtor.phone,
         "debtor_type": new_debtor.debtor_type
     }
+
+@router.get('/debtor', response_model=List[DebtorResponse])
+def get_debtors(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Retrieve all debtors for the authenticated client."""
+    debtors = db.query(Debtor).filter(Debtor.user_id == current_user.id).order_by(Debtor.name.asc()).all()
+    
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "email": d.email,
+            "phone": d.phone,
+            "debtor_type": d.debtor_type
+        } for d in debtors
+    ]
