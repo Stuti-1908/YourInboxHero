@@ -18,30 +18,37 @@ export const Login = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
   };
 
   return (
-    <div className="login-container">
-      <form className="login-form" onSubmit={handleSubmit}>
-        <h2>Sign In</h2>
-        {error && <div className="error-message">{error}</div>}
-        <div className="form-group">
-          <label>Username</label>
-          <input 
-            type="text" 
-            value={username} 
-            onChange={(e) => setUsername(e.target.value)} 
-            required 
-          />
+    <div className="login-container fade-in">
+      <div className="login-card">
+        <div className="login-brand">
+          <h1>YourInbox<span>Hero</span></h1>
+          <p>Sign in to manage your automated reminders.</p>
         </div>
-        <div className="form-group">
-          <label>Password</label>
-          <input 
-            type="password" 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)} 
-            required 
-          />
-        </div>
-        <button type="submit" className="btn-login">Login</button>
-      </form>
+        {error && <div className="login-error">{error}</div>}
+        <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-group">
+            <label>Username</label>
+            <input 
+              type="text" 
+              value={username} 
+              onChange={e => setUsername(e.target.value)} 
+              required 
+              placeholder="Enter your username"
+            />
+          </div>
+          <div className="login-group">
+            <label>Password</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              required 
+              placeholder="Enter your password"
+            />
+          </div>
+          <button type="submit" className="btn-login">Sign In</button>
+        </form>
+      </div>
     </div>
   );
 };

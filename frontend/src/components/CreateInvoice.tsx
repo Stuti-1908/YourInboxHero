@@ -37,21 +37,23 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
   };
 
   return (
-    <div className="form-container">
-      <h3>Add New Invoice</h3>
+    <div className="form-card fade-in">
+      <div className="form-header">
+        <h3>Add New Invoice</h3>
+      </div>
       {error && <div className="error-message">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Debtor ID (UUID)</label>
-          <input type="text" value={debtorId} onChange={(e) => setDebtorId(e.target.value)} required />
+          <input type="text" value={debtorId} onChange={(e) => setDebtorId(e.target.value)} required placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000" />
         </div>
         <div className="form-group">
           <label>Invoice Number</label>
-          <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} required />
+          <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} required placeholder="INV-2023-001" />
         </div>
         <div className="form-group">
-          <label>Amount</label>
-          <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <label>Amount ($)</label>
+          <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="1500.00" />
         </div>
         <div className="form-group">
           <label>Due Date</label>
@@ -59,11 +61,13 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
         </div>
         <div className="form-group">
           <label>Description (Optional)</label>
-          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Consulting Services" />
         </div>
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Adding...' : 'Add Invoice'}
-        </button>
+        <div className="form-actions">
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Adding...' : 'Add Invoice'}
+          </button>
+        </div>
       </form>
     </div>
   );

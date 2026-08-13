@@ -27,25 +27,29 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
   };
 
   return (
-    <div className="form-container">
-      <h3>Add New Debtor</h3>
+    <div className="form-card fade-in">
+      <div className="form-header">
+        <h3>Add New Debtor</h3>
+      </div>
       {error && <div className="error-message">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Company Name</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Acme Corporation" />
         </div>
         <div className="form-group">
           <label>Email Address</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="billing@acme.com" />
         </div>
         <div className="form-group">
           <label>Phone (Optional)</label>
-          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
         </div>
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Adding...' : 'Add Debtor'}
-        </button>
+        <div className="form-actions">
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Adding...' : 'Add Debtor'}
+          </button>
+        </div>
       </form>
     </div>
   );
