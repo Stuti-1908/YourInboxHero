@@ -12,8 +12,12 @@ QUEUE_NAME = os.getenv('REMINDER_QUEUE_NAME', 'reminder-queue')
 def enqueue_reminder(invoice_id: str) -> None:
     """Push an invoice ID onto the Service Bus reminder queue."""
     from azure.servicebus import ServiceBusClient, ServiceBusMessage
+    from datetime import date
+
+    # Generate idempotency key based on invoice and today's date
+    idempotency_key = f"{invoice_id}_{date.today().isoformat()}"
 
     client = ServiceBusClient.from_connection_string(SERVICE_BUS_CONNECTION_STR)
     with client.get_queue_sender(QUEUE_NAME) as sender:
-        msg = ServiceBusMessage(invoice_id)
+        msg = ServiceBusMessage(invoice_id, message_id=idempotency_key)
         sender.send_messages(msg)
