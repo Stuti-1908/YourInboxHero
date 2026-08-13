@@ -15,6 +15,15 @@ os.environ["SENDGRID_API_KEY"] = "SG.test"
 # Now import and create tables (this import triggers src/db.py to create the engine)
 from src.db import engine  # noqa: E402
 from src.models.base import Base  # noqa: E402
-from src.models import debtor, invoice, reminder  # noqa: F401,E402
+from src.models import debtor, invoice, reminder, user  # noqa: F401,E402
 
 Base.metadata.create_all(bind=engine)
+
+# Override auth dependency for tests so they don't all fail with 401
+from src.app import app
+from src.auth import get_current_user
+
+def override_get_current_user():
+    return user.User(username="testuser", id="test-id")
+
+app.dependency_overrides[get_current_user] = override_get_current_user
