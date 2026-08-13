@@ -40,6 +40,16 @@ export const pauseInvoice = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Failed to pause invoice');
 };
 
+export const fetchDebtors = async (): Promise<Debtor[]> => {
+  const res = await fetch('/api/debtor', { headers: getAuthHeaders() });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
+  if (!res.ok) throw new Error('Failed to fetch debtors');
+  return await res.json();
+};
+
 export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
   const res = await fetch('/api/debtor', {
     method: 'POST',

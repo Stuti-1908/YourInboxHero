@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { createInvoice } from '../api/invoice';
+import React, { useState, useEffect } from 'react';
+import { createInvoice, fetchDebtors } from '../api/invoice';
+import type { Debtor } from '../api/invoice';
 import './Forms.css';
 
 export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
+  const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [debtorId, setDebtorId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [amount, setAmount] = useState('');
@@ -11,9 +13,21 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    fetchDebtors()
+      .then(data => setDebtors(data))
+      .catch(err => setError('Failed to load debtors.'));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (!debtorId) {
+      setError('Please select a debtor.');
+      return;
+    }
+
     setLoading(true);
     try {
       await createInvoice({
@@ -44,8 +58,18 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
       {error && <div className="error-message">{error}</div>}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label>Debtor ID (UUID)</label>
-          <input type="text" value={debtorId} onChange={(e) => setDebtorId(e.target.value)} required placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000" />
+          <label>Select Debtor</label>
+          <select 
+            value={debtorId} 
+            onChange={(e) => setDebtorId(e.target.value)} 
+            required 
+            className="form-select"
+          >
+            <option value="" disabled>-- Select a Debtor --</option>
+            {debtors.map(d => (
+              <option key={d.id} value={d.id}>{d.name} ({d.email})</option>
+            ))}
+          </select>
         </div>
         <div className="form-group">
           <label>Invoice Number</label>

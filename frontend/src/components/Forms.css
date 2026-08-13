@@ -34,7 +34,8 @@
   margin-bottom: 8px;
 }
 
-.form-group input {
+.form-group input,
+.form-group select {
   width: 100%;
   padding: 12px 16px;
   border: 1px solid #E5E7EB;
@@ -45,7 +46,8 @@
   transition: all var(--transition-fast);
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group select:focus {
   outline: none;
   border-color: var(--color-brand-primary);
   box-shadow: var(--shadow-input-focus);

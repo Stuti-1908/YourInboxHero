@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InvoiceTable } from './components/InvoiceTable';
+import { DebtorTable } from './components/DebtorTable';
 import { Login } from './components/Login';
 import { CreateDebtor } from './components/CreateDebtor';
 import { CreateInvoice } from './components/CreateInvoice';
@@ -8,13 +9,13 @@ import './App.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'addDebtor' | 'addInvoice'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'debtors' | 'addDebtor' | 'addInvoice'>('dashboard');
 
   useEffect(() => {
     setIsAuthenticated(!!localStorage.getItem('token'));
   }, []);
 
-  const handleTabChange = (tab: 'dashboard' | 'addDebtor' | 'addInvoice') => {
+  const handleTabChange = (tab: 'dashboard' | 'debtors' | 'addDebtor' | 'addInvoice') => {
     setActiveTab(tab);
   };
 
@@ -30,7 +31,13 @@ function App() {
               className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
               onClick={() => handleTabChange('dashboard')}
             >
-              Dashboard
+              Invoices
+            </button>
+            <button 
+              className={`nav-tab ${activeTab === 'debtors' ? 'active' : ''}`}
+              onClick={() => handleTabChange('debtors')}
+            >
+              Debtors
             </button>
             <button 
               className={`nav-tab ${activeTab === 'addDebtor' ? 'active' : ''}`}
@@ -54,7 +61,8 @@ function App() {
         {isAuthenticated ? (
           <div className="fade-in" key={activeTab}>
             {activeTab === 'dashboard' && <InvoiceTable />}
-            {activeTab === 'addDebtor' && <CreateDebtor onSuccess={() => handleTabChange('dashboard')} />}
+            {activeTab === 'debtors' && <DebtorTable />}
+            {activeTab === 'addDebtor' && <CreateDebtor onSuccess={() => handleTabChange('debtors')} />}
             {activeTab === 'addInvoice' && <CreateInvoice onSuccess={() => handleTabChange('dashboard')} />}
           </div>
         ) : (
