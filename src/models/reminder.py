@@ -1,5 +1,4 @@
 from sqlalchemy import Column, String, JSON, TIMESTAMP, Enum, ForeignKey
-from sqlalchemy.types import UUID
 import uuid
 from sqlalchemy.orm import relationship
 import enum
@@ -15,9 +14,10 @@ class ReminderStatus(str, enum.Enum):
 
 class ReminderLog(Base):
     __tablename__ = "reminder_log"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    invoice_id = Column(UUID(as_uuid=True), ForeignKey('invoice.id'), nullable=False)
-    sent_at = Column(TIMESTAMP, nullable=False, server_default='now()')
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    invoice_id = Column(String, ForeignKey('invoice.id'), nullable=False)
+    invoice = relationship('Invoice')
+    sent_at = Column(TIMESTAMP, nullable=False)
     channel = Column(Enum(Channel), nullable=False)
     payload = Column(JSON, nullable=False)
     status = Column(Enum(ReminderStatus), nullable=False)

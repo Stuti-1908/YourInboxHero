@@ -5,12 +5,12 @@ Business rules:
   - Only invoices with status 'upcoming' and due_date within [today, today+lookahead_days] qualify.
   - Overdue invoices (due_date < today) are NEVER sent automated reminders (legal guardrail).
 """
+import logging
 from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from src.models.invoice import Invoice, InvoiceStatus
-from src.services.email import send_reminder_email
 
 
 def get_eligible_invoices(db: Session, lookahead_days: int = 14):
@@ -37,11 +37,31 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
 
 
 def process_due_reminders():
-    """Fetch eligible invoices and send reminder emails for each."""
+    """Fetch eligible invoices and enqueue each for async reminder delivery.
+
+    In production, each invoice ID is pushed onto Azure Service Bus.
+    A consumer function picks up each message and calls the reminder worker.
+
+    Aborts early if the 'reminders-enabled' feature flag is off.
+    """
+    from src.feature_flags import reminders_enabled
+    if not reminders_enabled():
+        logging.info('Reminders disabled via feature flag — skipping')
+        return
+
     from src.db import get_session
+
     with get_session() as sess:
         invoices = get_eligible_invoices(sess)
+        if not invoices:
+            logging.info('No eligible invoices found')
+            return
+
+        from src.services.queue import enqueue_reminder
+
         for inv in invoices:
-            send_reminder_email(inv)
+            enqueue_reminder(str(inv.id))
             inv.last_reminder_sent = datetime.utcnow()
+            logging.info(f'Enqueued reminder for invoice {inv.id}')
         sess.commit()
+        logging.info(f'Enqueued {len(invoices)} reminder(s)')

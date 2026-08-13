@@ -102,8 +102,11 @@ def test_get_eligible_today_is_included():
         session.close()
 
 
-def test_process_due_reminders_sends_emails():
-    """process_due_reminders should call send_reminder_email for each eligible invoice."""
+def test_process_due_reminders_enqueues(monkeypatch):
+    """process_due_reminders should call enqueue_reminder for each eligible invoice."""
+    # Ensure feature flag is on
+    monkeypatch.setenv('REMINDERS_ENABLED', 'true')
+
     session = SessionLocal()
     try:
         debtor = _make_debtor(session, name="Process Corp")
@@ -112,7 +115,8 @@ def test_process_due_reminders_sends_emails():
     finally:
         session.close()
 
-    with patch('src.services.reminder_service.send_reminder_email') as mock_send:
+    with patch('src.services.queue.enqueue_reminder') as mock_enqueue:
         from src.services.reminder_service import process_due_reminders
         process_due_reminders()
-        assert mock_send.call_count >= 1
+        assert mock_enqueue.call_count >= 1
+
