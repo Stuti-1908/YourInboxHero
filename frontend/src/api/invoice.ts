@@ -6,6 +6,14 @@ export interface Invoice {
   status: string;
 }
 
+export interface Debtor {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  debtor_type: string;
+}
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -30,6 +38,32 @@ export const pauseInvoice = async (id: string): Promise<void> => {
     headers: getAuthHeaders()
   });
   if (!res.ok) throw new Error('Failed to pause invoice');
+};
+
+export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
+  const res = await fetch('/api/debtor', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to create debtor');
+  }
+  return await res.json();
+};
+
+export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_instructions?: string }): Promise<Invoice> => {
+  const res = await fetch('/api/invoice', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to create invoice');
+  }
+  return await res.json();
 };
 
 export const login = async (username: string, password: string): Promise<string> => {
