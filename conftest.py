@@ -19,11 +19,19 @@ from src.models import debtor, invoice, reminder, user  # noqa: F401,E402
 
 Base.metadata.create_all(bind=engine)
 
-# Override auth dependency for tests so they don't all fail with 401
 from src.app import app
 from src.auth import get_current_user
+from src.db import SessionLocal
+
+# Insert test user so foreign keys resolve properly in tests
+_db = SessionLocal()
+if not _db.query(user.User).filter_by(id="test-id").first():
+    _test_user = user.User(username="testuser", id="test-id", hashed_password="pwd", company_name="Test Corp")
+    _db.add(_test_user)
+    _db.commit()
+_db.close()
 
 def override_get_current_user():
-    return user.User(username="testuser", id="test-id")
+    return user.User(username="testuser", id="test-id", company_name="Test Corp")
 
 app.dependency_overrides[get_current_user] = override_get_current_user

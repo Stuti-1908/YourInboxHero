@@ -14,7 +14,7 @@ client = TestClient(app)
 
 def _seed_reminder_log(session, count=3):
     """Create a debtor, invoice, and `count` reminder log entries."""
-    debtor = Debtor(
+    debtor = Debtor(user_id='test-id', 
         id=str(uuid.uuid4()),
         name="History Corp",
         email=f"{uuid.uuid4().hex[:8]}@example.com",

@@ -10,10 +10,11 @@ def render_template(invoice):
 
 def send_reminder_email(invoice):
     html_body = render_template(invoice)
+    company_name = invoice.debtor.user.company_name or 'YourInboxHero'
     message = Mail(
         from_email='reminders@yourinboxhero.com',
         to_emails=invoice.debtor.email,
-        subject=f'Reminder: Invoice {invoice.invoice_number} due {invoice.due_date}',
+        subject=f'Reminder: Invoice {invoice.invoice_number} from {company_name} is due',
         html_content=html_body,
     )
     sg = SendGridAPIClient(os.getenv('SENDGRID_API_KEY'))

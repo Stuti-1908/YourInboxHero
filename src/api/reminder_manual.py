@@ -1,22 +1,28 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
+from datetime import date, datetime
+
 from src.db import get_db
 from src.models.invoice import Invoice, InvoiceStatus
-from datetime import date, datetime
+from src.models.reminder import ReminderLog, Channel, ReminderStatus
+from src.models.debtor import Debtor
 from src.services.email import send_reminder_email
-from pydantic import BaseModel
-
-class ManualReminderRequest(BaseModel):
-    invoice_id: str
+from src.auth import get_current_user
+from src.models.user import User
 
 router = APIRouter()
 
-@router.post('/reminder/manual', status_code=200)
-def manual_reminder(request: ManualReminderRequest, db: Session = Depends(get_db)):
-    invoice_id = request.invoice_id
-    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+@router.post('/reminders/{invoice_id}/send-now', status_code=200)
+def send_manual_reminder(invoice_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Manually trigger a reminder for a specific invoice."""
+    invoice = (
+        db.query(Invoice)
+        .join(Debtor)
+        .filter(Invoice.id == invoice_id, Debtor.user_id == current_user.id)
+        .first()
+    )
     if not invoice:
-        raise HTTPException(status_code=404, detail='Invoice not found')
+        raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.debtor.debtor_type != 'business':
         raise HTTPException(status_code=400, detail='Only business debtors allowed')
     if invoice.due_date < date.today():

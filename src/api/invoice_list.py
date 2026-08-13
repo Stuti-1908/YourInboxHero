@@ -5,7 +5,10 @@ from src.db import get_db
 from src.models.invoice import Invoice
 from pydantic import BaseModel, ConfigDict
 from datetime import date
-from typing import List, Optional
+from typing import List
+from src.models.debtor import Debtor
+from src.auth import get_current_user
+from src.models.user import User
 
 class InvoiceResponse(BaseModel):
     id: str
@@ -19,7 +22,13 @@ class InvoiceResponse(BaseModel):
 router = APIRouter()
 
 @router.get('/invoice', response_model=List[InvoiceResponse])
-def list_invoices(db: Session = Depends(get_db)):
-    """Return all invoices."""
-    invoices = db.query(Invoice).all()
+def list_invoices(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Return all invoices in the system for the current user."""
+    invoices = (
+        db.query(Invoice)
+        .join(Debtor)
+        .filter(Debtor.user_id == current_user.id)
+        .order_by(Invoice.due_date.asc())
+        .all()
+    )
     return invoices

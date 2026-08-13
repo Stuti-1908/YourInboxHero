@@ -12,7 +12,7 @@ client = TestClient(app)
 
 
 def _make_debtor(session, name="Pause Corp"):
-    d = Debtor(
+    d = Debtor(user_id='test-id', 
         id=str(uuid.uuid4()),
         name=name,
         email=f"{uuid.uuid4().hex[:8]}@example.com",

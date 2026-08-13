@@ -8,7 +8,7 @@ from src.models.invoice import Invoice, InvoiceStatus
 
 
 def _make_debtor(session, name="Overdue Corp"):
-    d = Debtor(
+    d = Debtor(user_id='test-id', 
         id=str(uuid.uuid4()),
         name=name,
         email=f"{uuid.uuid4().hex[:8]}@example.com",

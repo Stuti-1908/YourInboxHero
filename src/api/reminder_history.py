@@ -1,27 +1,27 @@
-"""Reminder history endpoint — read-only access to the audit log.
-
-Provides JSON and CSV export of reminder_log entries for compliance
-and operational visibility.
-"""
+"""Endpoint to view the history of sent reminders."""
+from datetime import date
+from typing import List, Optional
 import csv
 import io
-from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from src.db import get_db
 from src.models.reminder import ReminderLog
-
+from src.models.invoice import Invoice
+from src.models.debtor import Debtor
+from src.auth import get_current_user
+from src.models.user import User
 
 class ReminderLogResponse(BaseModel):
-    """Pydantic schema for a single reminder log entry."""
     id: str
     invoice_id: str
     sent_at: str
     channel: str
     status: str
+    payload: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,48 +30,60 @@ router = APIRouter()
 
 
 @router.get('/reminders/history', response_model=List[ReminderLogResponse])
-def reminder_history(limit: int = 100, db: Session = Depends(get_db)):
-    """Return the most recent reminder log entries as JSON."""
-    rows = (
-        db.query(ReminderLog)
-        .order_by(ReminderLog.sent_at.desc())
-        .limit(limit)
-        .all()
-    )
+def get_reminder_history(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    limit: Optional[int] = Query(100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve history of reminders sent."""
+    query = _build_history_query(start_date, end_date, db, current_user)
+    if limit:
+        query = query.limit(limit)
+    logs = query.all()
+    
     return [
-        ReminderLogResponse(
-            id=str(r.id),
-            invoice_id=str(r.invoice_id),
-            sent_at=str(r.sent_at) if r.sent_at else '',
-            channel=r.channel.value if hasattr(r.channel, 'value') else str(r.channel),
-            status=r.status.value if hasattr(r.status, 'value') else str(r.status),
-        )
-        for r in rows
+        {
+            "id": log.id,
+            "invoice_id": log.invoice_id,
+            "sent_at": log.sent_at.isoformat() if log.sent_at else "",
+            "channel": log.channel.value,
+            "status": log.status.value,
+            "payload": log.payload
+        } for log in logs
     ]
 
-
 @router.get('/reminders/history/csv')
-def reminder_history_csv(limit: int = 100, db: Session = Depends(get_db)):
-    """Return the most recent reminder log entries as a CSV download."""
-    rows = (
-        db.query(ReminderLog)
-        .order_by(ReminderLog.sent_at.desc())
-        .limit(limit)
-        .all()
-    )
+def get_reminder_history_csv(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Export reminder history as CSV."""
+    query = _build_history_query(start_date, end_date, db, current_user)
+    logs = query.all()
+    
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['id', 'invoice_id', 'sent_at', 'channel', 'status'])
-    for r in rows:
-        writer.writerow([
-            str(r.id),
-            str(r.invoice_id),
-            str(r.sent_at) if r.sent_at else '',
-            r.channel.value if hasattr(r.channel, 'value') else str(r.channel),
-            r.status.value if hasattr(r.status, 'value') else str(r.status),
-        ])
-    return Response(
-        content=output.getvalue(),
-        media_type='text/csv',
-        headers={'Content-Disposition': 'attachment; filename=reminder_history.csv'},
+    for log in logs:
+        writer.writerow([log.id, log.invoice_id, log.sent_at, log.channel.value, log.status.value])
+    
+    response = Response(content=output.getvalue(), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=reminders_history.csv"
+    return response
+
+def _build_history_query(start_date, end_date, db, current_user):
+    query = (
+        db.query(ReminderLog)
+        .join(Invoice, ReminderLog.invoice_id == Invoice.id)
+        .join(Debtor, Invoice.debtor_id == Debtor.id)
+        .filter(Debtor.user_id == current_user.id)
     )
+    if start_date:
+        query = query.filter(ReminderLog.sent_at >= start_date)
+    if end_date:
+        query = query.filter(ReminderLog.sent_at <= end_date)
+    return query.order_by(ReminderLog.sent_at.desc())

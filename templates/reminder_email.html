@@ -2,8 +2,9 @@
 <html>
 <body>
 <p>Dear {{ invoice.debtor.name }},</p>
-<p>This is a friendly reminder that invoice <strong>{{ invoice.invoice_number }}</strong> for <strong>{{ invoice.amount }}</strong> is due on <strong>{{ invoice.due_date }}</strong>.</p>
+<p>This is a friendly reminder that invoice <strong>{{ invoice.invoice_number }}</strong> from <strong>{{ invoice.debtor.user.company_name or 'our company' }}</strong> for <strong>{{ invoice.amount }}</strong> is due on <strong>{{ invoice.due_date }}</strong>.</p>
 <p>Payment instructions: {{ invoice.payment_instructions }}</p>
-<p>Thank you for your prompt attention.</p>
+<p>Thank you for your prompt attention.<br>
+- <em>{{ invoice.debtor.user.company_name or 'YourInboxHero' }}</em></p>
 </body>
 </html>
