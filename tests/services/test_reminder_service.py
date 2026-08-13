@@ -1,35 +1,21 @@
 """Tests for reminder_service — get_eligible_invoices and process_due_reminders.
 
-Fixtures create 3 invoices with distinct due-date scenarios to verify
-that only the correct invoice is returned by the eligibility query.
+Each test creates its own isolated data using unique UUIDs and debtor emails.
 """
-import os
 import uuid
-import tempfile
 from datetime import date, timedelta
+from unittest.mock import patch
 
-# Point at a fresh SQLite file for test isolation
-_db_file = tempfile.mktemp(suffix=".db")
-os.environ["DATABASE_URL"] = f"sqlite:///{_db_file}"
-os.environ["SENDGRID_API_KEY"] = "SG.test"
-
-from unittest.mock import patch, MagicMock
-
-from src.db import engine, SessionLocal
-from src.models.base import Base
+from src.db import SessionLocal
 from src.models.debtor import Debtor
 from src.models.invoice import Invoice, InvoiceStatus
-from src.models import reminder  # noqa: F401 — register ReminderLog table
-
-# Create all tables in the test database
-Base.metadata.create_all(bind=engine)
 
 
-def _make_debtor(session, name="Acme Corp", email=None):
+def _make_debtor(session, name="Acme Corp"):
     d = Debtor(
         id=str(uuid.uuid4()),
         name=name,
-        email=email or f"{uuid.uuid4().hex[:8]}@example.com",
+        email=f"{uuid.uuid4().hex[:8]}@example.com",
         debtor_type="business",
     )
     session.add(d)
@@ -70,7 +56,10 @@ def test_get_eligible_returns_only_upcoming_within_window():
         _make_invoice(session, debtor, date.today() + timedelta(days=30))
         session.commit()
 
+        # Query only invoices for this debtor to isolate from other tests
         results = get_eligible_invoices(session, lookahead_days=14)
+        # Filter to only invoices belonging to our test debtor
+        results = [r for r in results if r.debtor_id == debtor.id]
         assert len(results) == 1
         assert results[0].id == inv_eligible.id
         assert results[0].due_date == date.today() + timedelta(days=1)
@@ -85,12 +74,12 @@ def test_get_eligible_excludes_paused():
     session = SessionLocal()
     try:
         debtor = _make_debtor(session, name="Paused Inc")
-        _make_invoice(session, debtor, date.today() + timedelta(days=3), status=InvoiceStatus.paused)
+        paused_inv = _make_invoice(session, debtor, date.today() + timedelta(days=3), status=InvoiceStatus.paused)
         session.commit()
 
         results = get_eligible_invoices(session, lookahead_days=14)
-        # The paused invoice should be excluded
-        paused_ids = [r.id for r in results if r.status == InvoiceStatus.paused]
+        # The paused invoice should never appear
+        paused_ids = [r.id for r in results if r.id == paused_inv.id]
         assert len(paused_ids) == 0
     finally:
         session.close()
@@ -115,8 +104,6 @@ def test_get_eligible_today_is_included():
 
 def test_process_due_reminders_sends_emails():
     """process_due_reminders should call send_reminder_email for each eligible invoice."""
-    from src.services.reminder_service import get_eligible_invoices
-
     session = SessionLocal()
     try:
         debtor = _make_debtor(session, name="Process Corp")
