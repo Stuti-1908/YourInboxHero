@@ -21,9 +21,16 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
       2. due_date >= today  (not overdue)
       3. due_date <= today + lookahead_days  (within the reminder window)
       4. debtor.debtor_type == 'business'
+      5. last_reminder_sent is NULL or < today (no double sends on same day)
     """
     today = date.today()
     upper = today + timedelta(days=lookahead_days)
+    
+    # We want to exclude invoices where a reminder was already sent today (UTC).
+    # Since last_reminder_sent is a UTC datetime, we compare its date component
+    # or just ensure it's strictly less than today's datetime start.
+    today_start = datetime.combine(today, datetime.min.time())
+    
     return (
         db.query(Invoice)
         .join(Invoice.debtor)
@@ -31,6 +38,7 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
             Invoice.status == InvoiceStatus.upcoming,
             Invoice.due_date >= today,
             Invoice.due_date <= upper,
+            (Invoice.last_reminder_sent == None) | (Invoice.last_reminder_sent < today_start)
         )
         .all()
     )

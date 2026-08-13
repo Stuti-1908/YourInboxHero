@@ -4,7 +4,7 @@ Since azure.servicebus may not be installed in the test environment, we mock
 the import at the point where enqueue_reminder calls it.
 """
 import sys
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock, Mock, ANY
 import types
 
 
@@ -51,7 +51,7 @@ def test_enqueue_calls_servicebus():
     # Verify a message was sent
     mock_sender.send_messages.assert_called_once()
     # Verify ServiceBusMessage was created with the invoice ID
-    mock_message_class.assert_called_once_with('invoice-1234')
+    mock_message_class.assert_called_once_with('invoice-1234', message_id=ANY)
 
     # Clean up
     sys.modules.pop('azure.servicebus', None)
