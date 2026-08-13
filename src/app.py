@@ -3,9 +3,11 @@ from src.api.reminder_manual import router as reminder_manual_router
 from src.api.invoice_pause import router as invoice_pause_router
 from src.api.reminder_history import router as reminder_history_router
 from src.api.invoice_list import router as invoice_list_router
+from src.api.health import router as health_router
 
 app = FastAPI()
 app.include_router(reminder_manual_router, prefix="")
 app.include_router(invoice_pause_router, prefix="")
 app.include_router(reminder_history_router, prefix="")
 app.include_router(invoice_list_router, prefix="")
+app.include_router(health_router, prefix="")
