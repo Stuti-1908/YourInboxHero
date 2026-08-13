@@ -1,0 +1,8 @@
+fastapi
+sqlalchemy
+pydantic
+sendgrid
+jinja2
+pytest
+pytest-mock
+httpx
