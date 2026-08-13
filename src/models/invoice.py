@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Numeric, Date, ForeignKey, Enum, TIMESTAM
 from sqlalchemy.orm import relationship
 from .base import Base
 import enum
+import uuid
 
 class InvoiceStatus(str, enum.Enum):
     upcoming = "upcoming"
@@ -15,7 +16,8 @@ class Invoice(Base):
     __tablename__ = "invoice"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     debtor_id = Column(String, ForeignKey('debtor.id'), nullable=False)
-    debtor = relationship('Debtor')
+    debtor = relationship('Debtor', back_populates='invoices')
+    reminders = relationship('ReminderLog', back_populates='invoice', cascade="all, delete-orphan")
     invoice_number = Column(String, nullable=False, unique=True)
     amount = Column(Numeric(12,2), nullable=False)
     description = Column(String)

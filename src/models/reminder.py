@@ -16,7 +16,7 @@ class ReminderLog(Base):
     __tablename__ = "reminder_log"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     invoice_id = Column(String, ForeignKey('invoice.id'), nullable=False)
-    invoice = relationship('Invoice')
+    invoice = relationship('Invoice', back_populates='reminders')
     sent_at = Column(TIMESTAMP, nullable=False)
     channel = Column(Enum(Channel), nullable=False)
     payload = Column(JSON, nullable=False)

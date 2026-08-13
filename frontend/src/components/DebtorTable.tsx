@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchDebtors } from '../api/invoice';
+import { fetchDebtors, deleteDebtor } from '../api/invoice';
 import type { Debtor } from '../api/invoice';
 import './InvoiceTable.css';
 
@@ -12,6 +12,16 @@ export const DebtorTable = () => {
       .then(setDebtors)
       .catch(err => setError(err.message));
   }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure? This will delete the debtor and all associated invoices and reminders permanently.")) return;
+    try {
+      await deleteDebtor(id);
+      setDebtors(prev => prev.filter(d => d.id !== id));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
 
   return (
     <div className="table-container fade-in">
@@ -26,12 +36,13 @@ export const DebtorTable = () => {
             <th>Email</th>
             <th>Phone</th>
             <th>Type</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {debtors.length === 0 ? (
             <tr>
-              <td colSpan={4} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+              <td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                 No debtors found. Add a debtor to get started.
               </td>
             </tr>
@@ -45,6 +56,15 @@ export const DebtorTable = () => {
                   <span className="badge status-upcoming">
                     {debtor.debtor_type}
                   </span>
+                </td>
+                <td>
+                  <button 
+                    className="btn-action" 
+                    style={{ borderColor: 'var(--color-status-error)', color: 'var(--color-status-error)' }}
+                    onClick={() => handleDelete(debtor.id)}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))

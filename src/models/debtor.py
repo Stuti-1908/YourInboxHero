@@ -12,3 +12,4 @@ class Debtor(Base):
     email = Column(String, nullable=False, unique=True)
     phone = Column(String)
     debtor_type = Column(String, nullable=False)  # 'business'
+    invoices = relationship('Invoice', back_populates='debtor', cascade="all, delete-orphan")

@@ -46,3 +46,15 @@ app.include_router(reminder_history_router, prefix="", dependencies=[Depends(get
 app.include_router(invoice_list_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(debtor_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(invoice_create_router, prefix="", dependencies=[Depends(get_current_user)])
+
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Serve React App in production
+if os.path.isdir("frontend/dist"):
+    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_react(full_path: str):
+        return FileResponse("frontend/dist/index.html")

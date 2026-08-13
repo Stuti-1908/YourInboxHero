@@ -1,0 +1,39 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches:
+      - master
+
+env:
+  ACR_NAME: yourinboxheroacr
+  APP_NAME: yourinboxhero-app-prod
+  RG_NAME: yourinboxhero-rg-prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ env.ACR_NAME }}.azurecr.io/yourinboxhero:${{ github.sha }}
+
+      - name: Deploy to Azure Web App (Green Slot)
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.APP_NAME }}
+          slot-name: green
+          images: ${{ env.ACR_NAME }}.azurecr.io/yourinboxhero:${{ github.sha }}

@@ -54,13 +54,29 @@ export const createDebtor = async (data: { name: string; email: string; phone?: 
   const res = await fetch('/api/debtor', {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify(data)
+    body: JSON.stringify(data),
   });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
+    const errorData = await res.json();
     throw new Error(errorData.detail || 'Failed to create debtor');
   }
   return await res.json();
+};
+
+export const deleteDebtor = async (id: string): Promise<void> => {
+  const res = await fetch(`/api/debtor/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
+  if (!res.ok) throw new Error('Failed to delete debtor');
 };
 
 export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_instructions?: string }): Promise<Invoice> => {

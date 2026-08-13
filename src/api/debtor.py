@@ -62,3 +62,14 @@ def get_debtors(db: Session = Depends(get_db), current_user: User = Depends(get_
             "debtor_type": d.debtor_type
         } for d in debtors
     ]
+
+@router.delete('/debtor/{debtor_id}', status_code=200)
+def delete_debtor(debtor_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a debtor and cascade delete all their invoices and reminders."""
+    debtor = db.query(Debtor).filter(Debtor.id == debtor_id, Debtor.user_id == current_user.id).first()
+    if not debtor:
+        raise HTTPException(status_code=404, detail="Debtor not found or unauthorized")
+    
+    db.delete(debtor)
+    db.commit()
+    return {"detail": "Debtor and all associated data deleted successfully"}
