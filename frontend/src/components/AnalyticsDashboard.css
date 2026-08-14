@@ -1,0 +1,195 @@
+.analytics-dashboard {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  color: var(--color-text-primary, #111827);
+  animation: fadeInUp var(--transition-normal, 250ms) ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat-card {
+  background: var(--color-bg-secondary, #FFFFFF);
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: transform var(--transition-fast, 150ms);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.stat-title {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #4B5563);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-family-sans, 'Inter', sans-serif);
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: var(--font-family-display, 'Outfit', sans-serif);
+  color: var(--color-brand-primary, #1F2937);
+}
+
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.chart-card {
+  background: var(--color-bg-secondary, #FFFFFF);
+  border-radius: var(--radius-lg, 12px);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+}
+
+.chart-card h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+  font-family: var(--font-family-display, 'Outfit', sans-serif);
+}
+
+/* Horizontal Stacked Bar */
+.aging-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.stacked-bar {
+  display: flex;
+  height: 24px;
+  border-radius: var(--radius-sm, 4px);
+  overflow: hidden;
+  background: var(--color-bg-primary, #F9FAFB);
+}
+
+.bar-segment {
+  height: 100%;
+  transition: width 1s ease-in-out;
+}
+
+.segment-current { background-color: var(--color-status-success, #059669); }
+.segment-30 { background-color: var(--color-brand-accent, #D4AF37); }
+.segment-60 { background-color: var(--color-status-warning, #D97706); }
+.segment-90 { background-color: var(--color-status-error, #DC2626); }
+
+.aging-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* Status Breakdown */
+.status-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-bg-primary, #F9FAFB);
+}
+.status-row:last-child {
+  border-bottom: none;
+}
+.status-name {
+  text-transform: capitalize;
+  font-weight: 500;
+}
+.status-count {
+  background: var(--color-bg-primary, #F9FAFB);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+}
+
+/* Monthly Recovery Bar Chart */
+.monthly-chart {
+  display: flex;
+  align-items: flex-end;
+  height: 200px;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+
+.monthly-bar-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 0.5rem;
+}
+
+.monthly-bar {
+  width: 100%;
+  max-width: 40px;
+  background-color: var(--color-brand-primary, #1F2937);
+  border-radius: var(--radius-sm, 4px) var(--radius-sm, 4px) 0 0;
+  animation: growUp 1s ease-out forwards;
+  transform-origin: bottom;
+}
+
+.monthly-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #4B5563);
+}
+.monthly-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0;
+  animation: fadeIn 0.5s ease-out 1s forwards;
+}
+
+@keyframes growUp {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}

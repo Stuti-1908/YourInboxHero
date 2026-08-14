@@ -11,3 +11,4 @@ passlib[bcrypt]
 python-multipart
 alembic
 azure-monitor-opentelemetry
+reportlab

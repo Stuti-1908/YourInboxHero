@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchInvoices, pauseInvoice } from '../api/invoice';
+import { fetchInvoices, pauseInvoice, downloadInvoicePdf } from '../api/invoice';
 import type { Invoice } from '../api/invoice';
 import './InvoiceTable.css';
 
@@ -67,6 +67,13 @@ export const InvoiceTable = () => {
                     disabled={invoice.status === 'paused'}
                   >
                     {invoice.status === 'paused' ? 'Paused' : 'Pause Reminders'}
+                  </button>
+                  <button 
+                    className="btn-action"
+                    onClick={() => downloadInvoicePdf(invoice.id)}
+                    style={{ marginLeft: '8px' }}
+                  >
+                    PDF
                   </button>
                 </td>
               </tr>

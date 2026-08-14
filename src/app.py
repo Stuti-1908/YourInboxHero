@@ -6,6 +6,7 @@ from src.api.reminder_history import router as reminder_history_router
 from src.api.invoice_list import router as invoice_list_router
 from src.api.health import router as health_router
 from src.api.auth import router as auth_router
+from src.api.email_template import router as email_template_router
 from src.auth import get_current_user, get_password_hash
 from src.db import SessionLocal
 from src.models.user import User
@@ -45,6 +46,8 @@ app.include_router(health_router, prefix="")
 
 from src.api.debtor import router as debtor_router
 from src.api.invoice_create import router as invoice_create_router
+from src.api.analytics import router as analytics_router
+from src.api.invoice_pdf import router as invoice_pdf_router
 
 # Protected routes
 app.include_router(reminder_manual_router, prefix="", dependencies=[Depends(get_current_user)])
@@ -53,6 +56,9 @@ app.include_router(reminder_history_router, prefix="", dependencies=[Depends(get
 app.include_router(invoice_list_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(debtor_router, prefix="", dependencies=[Depends(get_current_user)])
 app.include_router(invoice_create_router, prefix="", dependencies=[Depends(get_current_user)])
+app.include_router(analytics_router, prefix="", dependencies=[Depends(get_current_user)])
+app.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(get_current_user)])
+app.include_router(email_template_router, prefix="", dependencies=[Depends(get_current_user)])
 
 import os
 from fastapi.staticfiles import StaticFiles
