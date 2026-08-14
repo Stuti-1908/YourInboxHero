@@ -30,6 +30,13 @@ async def lifespan(app: FastAPI):
         db.close()
     yield
 
+import os
+from azure.monitor.opentelemetry import configure_azure_monitor
+
+# Initialize Azure Monitor OpenTelemetry if connection string is present
+if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+    configure_azure_monitor()
+
 app = FastAPI(lifespan=lifespan)
 
 # Public routes

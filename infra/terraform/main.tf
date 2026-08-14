@@ -111,6 +111,8 @@ resource "azurerm_linux_web_app" "api" {
 
   app_settings = {
     "DATABASE_URL" = "postgresql://adminuser:${var.db_password}@${azurerm_postgresql_flexible_server.db.fqdn}:5432/appdb"
+    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.appinsights.instrumentation_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
   }
 }
 
@@ -129,5 +131,7 @@ resource "azurerm_linux_web_app_slot" "green" {
 
   app_settings = {
     "DATABASE_URL" = "postgresql://adminuser:${var.db_password}@${azurerm_postgresql_flexible_server.db.fqdn}:5432/appdb"
+    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.appinsights.instrumentation_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
   }
 }
