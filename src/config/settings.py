@@ -1,0 +1,83 @@
+"""Centralized configuration using Pydantic Settings."""
+from pydantic_settings import BaseSettings
+from pydantic import Field
+from functools import lru_cache
+from typing import Optional, List
+
+
+class Settings(BaseSettings):
+    # Required in all environments
+    secret_key: str = Field(
+        default="dev-secret-key-change-in-production-min-32-characters-long",
+        description="JWT signing secret (32+ chars)"
+    )
+    
+    # Database - required in production, SQLite default for local dev
+    database_url: str = Field(
+        default="sqlite:///local.db",
+        description="PostgreSQL connection string for production"
+    )
+    
+    # External services
+    sendgrid_api_key: Optional[str] = Field(default=None, description="SendGrid API key for fallback emails")
+    ghl_api_key: Optional[str] = Field(default=None, description="GoHighLevel API key for SMS/Voice")
+    ghl_location_id: Optional[str] = Field(default=None, description="GoHighLevel location ID")
+    
+    # Azure / Monitoring
+    applicationinsights_connection_string: Optional[str] = Field(default=None)
+    
+    # Feature flags
+    unleash_url: Optional[str] = Field(default=None, description="Unleash feature flag service URL")
+    
+    # Queue (legacy/unused currently)
+    service_bus_connection_string: Optional[str] = Field(default=None)
+    reminder_queue_name: str = Field(default="reminder-queue")
+    
+    # Stripe (for future payment integration)
+    stripe_secret_key: Optional[str] = Field(default=None)
+    stripe_webhook_secret: Optional[str] = Field(default=None)
+    
+    # Environment
+    environment: str = Field(default="development", description="development|staging|production")
+    
+    # CORS
+    cors_origins: List[str] = Field(
+        default=["http://localhost:5173", "http://localhost:3000"],
+        description="Allowed CORS origins"
+    )
+    
+    # Database pool settings
+    db_pool_size: int = Field(default=10, description="SQLAlchemy pool size")
+    db_max_overflow: int = Field(default=20, description="SQLAlchemy max overflow")
+    db_pool_recycle: int = Field(default=3600, description="Connection recycle seconds")
+    db_pool_pre_ping: bool = Field(default=True, description="Validate connections before use")
+    
+    # Reminder settings
+    reminders_enabled: bool = Field(default=True, description="Global reminder toggle")
+    email_lookahead_days: int = Field(default=14, description="Days ahead to send pre-due reminders")
+    email_to_sms_days: int = Field(default=15, description="Days before email→SMS escalation")
+    sms_to_voice_days: int = Field(default=7, description="Days before SMS→Voice escalation")
+    
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Cached settings instance for dependency injection."""
+    return Settings()
+
+
+def validate_production_settings(settings: Settings) -> None:
+    """Validate required settings for production deployment."""
+    if settings.environment in ("production", "staging"):
+        if not settings.secret_key or settings.secret_key.startswith("dev-"):
+            raise RuntimeError("SECRET_KEY must be set to a secure value in production")
+        if settings.database_url.startswith("sqlite"):
+            raise RuntimeError("DATABASE_URL must be PostgreSQL in production")
+        if not settings.sendgrid_api_key:
+            raise RuntimeError("SENDGRID_API_KEY required in production")
+        if settings.cors_origins == ["http://localhost:5173", "http://localhost:3000"]:
+            raise RuntimeError("CORS_ORIGINS must include production frontend domain")

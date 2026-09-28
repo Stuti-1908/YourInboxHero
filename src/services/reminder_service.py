@@ -6,7 +6,7 @@ Business rules:
   - Overdue invoices (due_date < today) are NEVER sent automated reminders (legal guardrail).
 """
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -69,7 +69,7 @@ def process_due_reminders():
 
         for inv in invoices:
             enqueue_reminder(str(inv.id))
-            inv.last_reminder_sent = datetime.utcnow()
+            inv.last_reminder_sent = datetime.now(timezone.utc)
             logging.info(f'Enqueued reminder for invoice {inv.id}')
         sess.commit()
         logging.info(f'Enqueued {len(invoices)} reminder(s)')

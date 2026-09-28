@@ -46,5 +46,9 @@ def test_list_invoices_returns_200():
     resp = client.get('/invoice')
     assert resp.status_code == 200
     data = resp.json()
-    assert isinstance(data, list)
-    assert any(i['id'] == inv_id for i in data)
+    assert "items" in data
+    assert isinstance(data["items"], list)
+    assert data["total"] >= 1
+    assert data["page"] == 1
+    assert data["page_size"] == 50
+    assert any(i['id'] == inv_id for i in data["items"])

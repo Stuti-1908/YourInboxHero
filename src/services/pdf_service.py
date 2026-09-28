@@ -4,7 +4,10 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-def generate_invoice_pdf(invoice, debtor, username):
+import base64
+from reportlab.platypus import Image
+
+def generate_invoice_pdf(invoice, debtor, user):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
@@ -12,7 +15,26 @@ def generate_invoice_pdf(invoice, debtor, username):
 
     # Header
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=24, spaceAfter=20, textColor=colors.HexColor('#2c3e50'))
-    elements.append(Paragraph("<b>YourInboxHero</b> - Invoice", title_style))
+    
+    if user.logo_base64:
+        try:
+            # Handle data URL format (e.g. data:image/png;base64,...)
+            header, encoded = user.logo_base64.split(",", 1) if "," in user.logo_base64 else ("", user.logo_base64)
+            img_data = base64.b64decode(encoded)
+            img_buffer = BytesIO(img_data)
+            # Use ReportLab Image
+            img = Image(img_buffer, width=150, height=50, kind='proportional')
+            img.hAlign = 'LEFT'
+            elements.append(img)
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph("<b>Invoice</b>", title_style))
+        except Exception as e:
+            brand_name = user.company_name or user.username
+            elements.append(Paragraph(f"<b>{brand_name}</b> - Invoice", title_style))
+    else:
+        brand_name = user.company_name or user.username
+        elements.append(Paragraph(f"<b>{brand_name}</b> - Invoice", title_style))
+        
     elements.append(Spacer(1, 12))
 
     # Details
@@ -23,7 +45,7 @@ def generate_invoice_pdf(invoice, debtor, username):
     elements.append(Spacer(1, 20))
 
     # Parties
-    elements.append(Paragraph(f"<b>From:</b> {username}", normal_style))
+    elements.append(Paragraph(f"<b>From:</b> {user.company_name or user.username}", normal_style))
     elements.append(Paragraph(f"<b>To:</b> {debtor.name} ({debtor.email})", normal_style))
     elements.append(Spacer(1, 20))
 

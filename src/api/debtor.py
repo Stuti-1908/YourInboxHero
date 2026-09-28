@@ -1,5 +1,6 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+"""Debtor CRUD endpoints with pagination."""
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from src.db import get_db
@@ -22,8 +23,21 @@ class DebtorResponse(BaseModel):
     phone: str | None
     debtor_type: str
 
+
+class PaginatedDebtorResponse(BaseModel):
+    items: List[DebtorResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 @router.post('/debtor', response_model=DebtorResponse)
-def create_debtor(request: DebtorCreateRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_debtor(
+    request: DebtorCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Create a new debtor for the authenticated client."""
     # Check if email is already in use
     if db.query(Debtor).filter(Debtor.email == request.email).first():
@@ -48,23 +62,57 @@ def create_debtor(request: DebtorCreateRequest, db: Session = Depends(get_db), c
         "debtor_type": new_debtor.debtor_type
     }
 
-@router.get('/debtor', response_model=List[DebtorResponse])
-def get_debtors(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Retrieve all debtors for the authenticated client."""
-    debtors = db.query(Debtor).filter(Debtor.user_id == current_user.id).order_by(Debtor.name.asc()).all()
+
+@router.get('/debtor', response_model=PaginatedDebtorResponse)
+def get_debtors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page (max 200)"),
+    search: Optional[str] = Query(None, description="Search by name or email"),
+):
+    """Retrieve paginated debtors for the authenticated client."""
+    query = db.query(Debtor).filter(Debtor.user_id == current_user.id)
     
-    return [
-        {
-            "id": d.id,
-            "name": d.name,
-            "email": d.email,
-            "phone": d.phone,
-            "debtor_type": d.debtor_type
-        } for d in debtors
-    ]
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Debtor.name.ilike(search_term)) | (Debtor.email.ilike(search_term))
+        )
+    
+    total = query.count()
+    total_pages = (total + page_size - 1) // page_size
+    
+    debtors = (
+        query.order_by(Debtor.name.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    
+    return PaginatedDebtorResponse(
+        items=[
+            {
+                "id": d.id,
+                "name": d.name,
+                "email": d.email,
+                "phone": d.phone,
+                "debtor_type": d.debtor_type
+            } for d in debtors
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
 
 @router.delete('/debtor/{debtor_id}', status_code=200)
-def delete_debtor(debtor_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def delete_debtor(
+    debtor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Delete a debtor and cascade delete all their invoices and reminders."""
     debtor = db.query(Debtor).filter(Debtor.id == debtor_id, Debtor.user_id == current_user.id).first()
     if not debtor:

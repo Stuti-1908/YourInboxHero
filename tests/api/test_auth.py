@@ -5,8 +5,10 @@ from src.db import SessionLocal
 from src.models.user import User
 from src.auth import get_password_hash
 import uuid
-
 import pytest
+
+# Disable rate limiting for tests
+app.state.limiter.enabled = False
 
 @pytest.fixture(autouse=True)
 def clear_overrides():
@@ -20,7 +22,7 @@ def test_login_success():
     try:
         # Create a test user
         test_username = f"user_{uuid.uuid4().hex[:6]}"
-        test_password = "securepassword"
+        test_password = "test123"
         
         db_user = User(
             username=test_username,

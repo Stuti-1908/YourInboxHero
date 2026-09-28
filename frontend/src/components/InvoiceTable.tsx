@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchInvoices, pauseInvoice, downloadInvoicePdf } from '../api/invoice';
 import type { Invoice } from '../api/invoice';
 import './InvoiceTable.css';

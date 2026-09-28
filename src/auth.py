@@ -1,5 +1,6 @@
+"""Authentication utilities with timezone-aware datetimes."""
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
@@ -10,7 +11,14 @@ import jwt
 from src.db import get_db
 from src.models.user import User
 
-SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key-for-jwt-dev")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    import sys
+    if os.getenv("ENVIRONMENT") == "production" or os.getenv("AZURE_HTTP_SERVER") or os.getenv("WEBSITE_INSTANCE_ID"):
+        # Running in Azure/production - fail fast
+        raise RuntimeError("SECRET_KEY environment variable is required in production")
+    # Local dev fallback
+    SECRET_KEY = "dev-secret-key-change-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -30,9 +38,9 @@ def get_password_hash(password):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

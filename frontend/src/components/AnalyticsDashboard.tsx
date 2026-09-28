@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { fetchAnalytics, AnalyticsData } from '../api/invoice';
+import { fetchAnalytics } from '../api/invoice';
+import type { AnalyticsData } from '../api/invoice';
 import './AnalyticsDashboard.css';
 
 export const AnalyticsDashboard: React.FC = () => {

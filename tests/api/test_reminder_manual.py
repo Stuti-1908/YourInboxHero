@@ -8,5 +8,5 @@ client = TestClient(app)
 def test_manual_reminder_404():
     # Use a valid UUID format that does not exist in the DB
     fake_id = "00000000-0000-0000-0000-000000000000"
-    resp = client.post('/reminder/manual', json={'invoice_id': fake_id})
+    resp = client.post(f'/reminders/{fake_id}/send-now', json={})
     assert resp.status_code == 404

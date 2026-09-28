@@ -1,19 +1,47 @@
 name: CI
+
 on: [push, pull_request]
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
 jobs:
   lint:
+    name: Lint (Python + Frontend)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install deps
-        run: pip install -r requirements.txt
-      - name: Lint
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+
+      - name: Lint Python
         run: flake8 src tests
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Node deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint Frontend
+        working-directory: frontend
+        run: npm run lint
+
   test:
+    name: Tests (PostgreSQL)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -28,30 +56,90 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+      SECRET_KEY: test-secret-key-for-testing-only-min-32-chars-long
+      SENDGRID_API_KEY: SG.test
+      ENVIRONMENT: test
+      REMINDERS_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v3
-      - name: Install deps
-        run: pip install -r requirements.txt
-      - name: Run tests
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/testdb
-        run: pytest -q --cov=src --cov-report=xml
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -U test && break
+            sleep 1
+          done
+
+      - name: Run Alembic Migrations
+        run: alembic upgrade head
+
+      - name: Run Tests
+        run: pytest -q --cov=src --cov-report=xml --cov-fail-under=50
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
   frontend:
+    name: Frontend Build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
       - name: Install deps
         run: npm ci
-      - name: Lint
-        run: npm run lint
+
+      - name: Type Check
+        run: npx tsc --noEmit
+
       - name: Build
         run: npm run build
 
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'

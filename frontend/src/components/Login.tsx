@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../api/invoice';
 import './Login.css';
 
-export const Login = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
+export const Login = ({ onLoginSuccess, onSwitchToRegister }: { onLoginSuccess: () => void, onSwitchToRegister: () => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -48,6 +48,9 @@ export const Login = ({ onLoginSuccess }: { onLoginSuccess: () => void }) => {
           </div>
           <button type="submit" className="btn-login">Sign In</button>
         </form>
+        <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.9rem', color: 'var(--color-text-light)' }}>
+          Don't have an account? <span onClick={onSwitchToRegister} className="switch-auth-link" style={{ color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}>Sign up</span>
+        </div>
       </div>
     </div>
   );

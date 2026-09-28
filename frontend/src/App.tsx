@@ -1,90 +1,155 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { InvoiceTable } from './components/InvoiceTable';
 import { DebtorTable } from './components/DebtorTable';
 import { Login } from './components/Login';
+import { Register } from './components/Register';
+import { Settings } from './components/Settings';
+import { LandingPage } from './components/LandingPage';
 import { CreateDebtor } from './components/CreateDebtor';
 import { CreateInvoice } from './components/CreateInvoice';
-import EmailTemplates from './components/EmailTemplates';
-import { logout } from './api/invoice';
+import Templates from './components/EmailTemplates';
+import { EmailProviders } from './components/EmailProviders';
+import { DocumentTable } from './components/DocumentTable';
+import { CreateDocumentRequest } from './components/CreateDocumentRequest';
+import { CreateDocumentClient } from './components/CreateDocumentClient';
+import { PaymentSuccess } from './components/PaymentSuccess';
+import { logout, getCompanyName } from './api/invoice';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import './App.css';
 
+type Module = 'money' | 'documents';
+type MoneyTab = 'analytics' | 'dashboard' | 'debtors' | 'addDebtor' | 'addInvoice' | 'templates' | 'emailProviders' | 'settings';
+type DocTab = 'docList' | 'addDoc' | 'addClient';
+type PublicPage = 'landing' | 'login' | 'register' | 'payment-success';
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'debtors' | 'addDebtor' | 'addInvoice' | 'analytics' | 'templates'>('analytics');
+  const [publicPage, setPublicPage] = useState<PublicPage>('landing');
+  const [activeModule, setActiveModule] = useState<Module>('money');
+  const [moneyTab, setMoneyTab] = useState<MoneyTab>('analytics');
+  const [docTab, setDocTab] = useState<DocTab>('docList');
 
   useEffect(() => {
     setIsAuthenticated(!!localStorage.getItem('token'));
+    
+    // Check if user is returning from Square checkout
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('plan')) {
+      setPublicPage('payment-success');
+    }
   }, []);
 
-  const handleTabChange = (tab: 'dashboard' | 'debtors' | 'addDebtor' | 'addInvoice' | 'analytics' | 'templates') => {
-    setActiveTab(tab);
-  };
+  const companyName = getCompanyName();
 
   return (
     <div className="app-container fade-in">
       {isAuthenticated && (
-        <header className="top-nav">
-          <div className="nav-brand">
-            <h1>YourInbox<span>Hero</span></h1>
-          </div>
-          <div className="nav-controls">
-            <button 
-              className={`nav-tab ${activeTab === 'analytics' ? 'active' : ''}`}
-              onClick={() => handleTabChange('analytics')}
+        <>
+          {/* Module Switcher Bar */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '0',
+            background: 'var(--color-bg-alt)',
+            borderBottom: '1px solid var(--color-border)',
+            padding: '0'
+          }}>
+            <button
+              onClick={() => setActiveModule('money')}
+              style={{
+                padding: '12px 32px',
+                border: 'none',
+                borderBottom: activeModule === 'money' ? '3px solid var(--color-primary)' : '3px solid transparent',
+                background: 'transparent',
+                fontWeight: activeModule === 'money' ? 700 : 400,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                color: activeModule === 'money' ? 'var(--color-primary)' : 'var(--color-text-light)'
+              }}
             >
-              Analytics
+              💰 Money Collection
             </button>
-            <button 
-              className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
-              onClick={() => handleTabChange('dashboard')}
+            <button
+              onClick={() => setActiveModule('documents')}
+              style={{
+                padding: '12px 32px',
+                border: 'none',
+                borderBottom: activeModule === 'documents' ? '3px solid var(--color-primary)' : '3px solid transparent',
+                background: 'transparent',
+                fontWeight: activeModule === 'documents' ? 700 : 400,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                color: activeModule === 'documents' ? 'var(--color-primary)' : 'var(--color-text-light)'
+              }}
             >
-              Invoices
-            </button>
-            <button 
-              className={`nav-tab ${activeTab === 'debtors' ? 'active' : ''}`}
-              onClick={() => handleTabChange('debtors')}
-            >
-              Debtors
-            </button>
-            <button 
-              className={`nav-tab ${activeTab === 'addDebtor' ? 'active' : ''}`}
-              onClick={() => handleTabChange('addDebtor')}
-            >
-              Add Debtor
-            </button>
-            <button 
-              className={`nav-tab ${activeTab === 'addInvoice' ? 'active' : ''}`}
-              onClick={() => handleTabChange('addInvoice')}
-            >
-              Add Invoice
-            </button>
-            <button 
-              className={`nav-tab ${activeTab === 'templates' ? 'active' : ''}`}
-              onClick={() => handleTabChange('templates')}
-            >
-              Email Templates
-            </button>
-            <button className="nav-logout" onClick={logout}>
-              Sign Out
+              📄 Document Collection
             </button>
           </div>
-        </header>
+
+          {/* Navigation Bar */}
+          <header className="top-nav">
+            <div className="nav-brand">
+              <h1>{companyName === 'YourInboxHero' ? <>YourInbox<span>Hero</span></> : <span>{companyName}</span>}</h1>
+            </div>
+            <div className="nav-controls">
+              {activeModule === 'money' ? (
+                <>
+                  <button className={`nav-tab ${moneyTab === 'analytics' ? 'active' : ''}`} onClick={() => setMoneyTab('analytics')}>Analytics</button>
+                  <button className={`nav-tab ${moneyTab === 'dashboard' ? 'active' : ''}`} onClick={() => setMoneyTab('dashboard')}>Invoices</button>
+                  <button className={`nav-tab ${moneyTab === 'debtors' ? 'active' : ''}`} onClick={() => setMoneyTab('debtors')}>Debtors</button>
+                  <button className={`nav-tab ${moneyTab === 'addDebtor' ? 'active' : ''}`} onClick={() => setMoneyTab('addDebtor')}>Add Debtor</button>
+                  <button className={`nav-tab ${moneyTab === 'addInvoice' ? 'active' : ''}`} onClick={() => setMoneyTab('addInvoice')}>Add Invoice</button>
+                  <button className={`nav-tab ${moneyTab === 'templates' ? 'active' : ''}`} onClick={() => setMoneyTab('templates')}>Templates</button>
+                  <button className={`nav-tab ${moneyTab === 'emailProviders' ? 'active' : ''}`} onClick={() => setMoneyTab('emailProviders')}>Email Setup</button>
+                  <button className={`nav-tab ${moneyTab === 'settings' ? 'active' : ''}`} onClick={() => setMoneyTab('settings')}>Settings</button>
+                </>
+              ) : (
+                <>
+                  <button className={`nav-tab ${docTab === 'docList' ? 'active' : ''}`} onClick={() => setDocTab('docList')}>Documents</button>
+                  <button className={`nav-tab ${docTab === 'addDoc' ? 'active' : ''}`} onClick={() => setDocTab('addDoc')}>Request Document</button>
+                  <button className={`nav-tab ${docTab === 'addClient' ? 'active' : ''}`} onClick={() => setDocTab('addClient')}>Add Client</button>
+                  <button className={`nav-tab ${moneyTab === 'settings' ? 'active' : ''}`} onClick={() => { setActiveModule('money'); setMoneyTab('settings'); }}>Settings</button>
+                </>
+              )}
+              <button className="nav-logout" onClick={logout}>Sign Out</button>
+            </div>
+          </header>
+        </>
       )}
-      <main className="main-content">
-        {isAuthenticated ? (
-          <div className="fade-in" key={activeTab}>
-            {activeTab === 'analytics' && <AnalyticsDashboard />}
-            {activeTab === 'dashboard' && <InvoiceTable />}
-            {activeTab === 'debtors' && <DebtorTable />}
-            {activeTab === 'addDebtor' && <CreateDebtor onSuccess={() => handleTabChange('debtors')} />}
-            {activeTab === 'addInvoice' && <CreateInvoice onSuccess={() => handleTabChange('dashboard')} />}
-            {activeTab === 'templates' && <EmailTemplates />}
-          </div>
-        ) : (
-          <Login onLoginSuccess={() => setIsAuthenticated(true)} />
-        )}
-      </main>
+
+      {isAuthenticated ? (
+        <main className="main-content">
+          {activeModule === 'money' ? (
+            <div className="fade-in" key={moneyTab}>
+              {moneyTab === 'analytics' && <AnalyticsDashboard />}
+              {moneyTab === 'dashboard' && <InvoiceTable />}
+              {moneyTab === 'debtors' && <DebtorTable />}
+              {moneyTab === 'addDebtor' && <CreateDebtor onSuccess={() => setMoneyTab('debtors')} />}
+              {moneyTab === 'addInvoice' && <CreateInvoice onSuccess={() => setMoneyTab('dashboard')} />}
+              {moneyTab === 'templates' && <Templates />}
+              {moneyTab === 'emailProviders' && <EmailProviders />}
+              {moneyTab === 'settings' && <Settings />}
+            </div>
+          ) : (
+            <div className="fade-in" key={docTab}>
+              {docTab === 'docList' && <DocumentTable />}
+              {docTab === 'addDoc' && <CreateDocumentRequest onSuccess={() => setDocTab('docList')} />}
+              {docTab === 'addClient' && <CreateDocumentClient onSuccess={() => setDocTab('addDoc')} />}
+            </div>
+          )}
+        </main>
+      ) : publicPage === 'payment-success' ? (
+        <PaymentSuccess
+          onGoToRegister={() => setPublicPage('register')}
+          onGoToLogin={() => setPublicPage('login')}
+        />
+      ) : publicPage === 'landing' ? (
+        <LandingPage onGetStarted={() => setPublicPage('register')} onSignIn={() => setPublicPage('login')} />
+      ) : publicPage === 'register' ? (
+        <Register onRegisterSuccess={() => setIsAuthenticated(true)} onSwitchToLogin={() => setPublicPage('login')} />
+      ) : (
+        <Login onLoginSuccess={() => setIsAuthenticated(true)} onSwitchToRegister={() => setPublicPage('register')} />
+      )}
     </div>
   );
 }

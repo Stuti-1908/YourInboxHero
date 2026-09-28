@@ -1,0 +1,40 @@
+.settings-container {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.settings-header h2 {
+  font-family: var(--font-primary);
+  color: var(--color-primary);
+  margin-bottom: 5px;
+}
+
+.settings-header p {
+  color: var(--color-text-light);
+  font-size: 0.95rem;
+}
+
+.settings-card {
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 30px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 30px;
+}
+
+.settings-card h3 {
+  color: var(--color-text);
+  font-size: 1.2rem;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 10px;
+}

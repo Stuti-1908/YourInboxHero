@@ -1,6 +1,7 @@
+"""Manual reminder trigger endpoint."""
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from src.db import get_db
 from src.models.invoice import Invoice, InvoiceStatus
@@ -12,8 +13,13 @@ from src.models.user import User
 
 router = APIRouter()
 
+
 @router.post('/reminders/{invoice_id}/send-now', status_code=200)
-def send_manual_reminder(invoice_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def send_manual_reminder(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """Manually trigger a reminder for a specific invoice."""
     invoice = (
         db.query(Invoice)
@@ -29,6 +35,6 @@ def send_manual_reminder(invoice_id: str, db: Session = Depends(get_db), current
         raise HTTPException(status_code=400, detail='Invoice past due – automation forbidden')
     # Send email (mockable)
     send_reminder_email(invoice)
-    invoice.last_reminder_sent = datetime.utcnow()
+    invoice.last_reminder_sent = datetime.now(timezone.utc)
     db.commit()
     return {'detail': 'Reminder sent'}

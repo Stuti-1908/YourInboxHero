@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchDebtors, deleteDebtor } from '../api/invoice';
 import type { Debtor } from '../api/invoice';
 import './InvoiceTable.css';

@@ -112,7 +112,7 @@ export const deleteDebtor = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Failed to delete debtor');
 };
 
-export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_instructions?: string }): Promise<Invoice> => {
+export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_link?: string; payment_instructions?: string }): Promise<Invoice> => {
   const res = await fetch('/api/invoice', {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -142,8 +142,38 @@ export const login = async (username: string, password: string): Promise<string>
   return data.access_token;
 };
 
+export const register = async (username: string, password: string, company_name: string): Promise<void> => {
+  const res = await fetch('/api/users/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, company_name })
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Registration failed');
+  }
+  
+  // Auto login after successful registration
+  await login(username, password);
+};
+
+export const getCompanyName = (): string => {
+  const customName = localStorage.getItem('company_name');
+  if (customName) return customName;
+
+  const token = localStorage.getItem('token');
+  if (!token) return 'YourInboxHero';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.company_name || 'YourInboxHero';
+  } catch (e) {
+    return 'YourInboxHero';
+  }
+};
 export const logout = () => {
   localStorage.removeItem('token');
+  localStorage.removeItem('company_name');
   window.location.reload();
 };
 
@@ -194,3 +224,111 @@ export const saveEmailTemplate = async (data: { template_type: string; subject: 
   }
   return await res.json();
 };
+
+export const getMe = async (): Promise<any> => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch('/api/users/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
+  if (!res.ok) throw new Error('Failed to fetch user settings');
+  return await res.json();
+};
+
+export const updateSettings = async (settings: any): Promise<void> => {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch('/api/users/me', {
+    method: 'PUT',
+    headers: { 
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(settings)
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
+  if (!res.ok) throw new Error('Failed to update settings');
+};
+
+// ============ Document Collection API ============
+
+export interface DocumentClient {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface DocumentRequest {
+  id: string;
+  title: string;
+  description?: string;
+  due_date: string;
+  status: string;
+  upload_token: string;
+  uploaded_file_name?: string;
+  escalation_tier: string;
+  sms_sent_count: number;
+  voice_call_count: number;
+  client: DocumentClient;
+}
+
+export const getDocumentClients = async (): Promise<DocumentClient[]> => {
+  const res = await fetch('/api/document-clients', { headers: getAuthHeaders() });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) throw new Error('Failed to fetch document clients');
+  return await res.json();
+};
+
+export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Promise<DocumentClient> => {
+  const res = await fetch('/api/document-clients', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to create document client');
+  }
+  return await res.json();
+};
+
+export const fetchDocumentRequests = async (): Promise<DocumentRequest[]> => {
+  const res = await fetch('/api/documents', { headers: getAuthHeaders() });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) throw new Error('Failed to fetch document requests');
+  return await res.json();
+};
+
+export const createDocumentRequest = async (data: { client_id: string; title: string; description?: string; due_date: string }): Promise<DocumentRequest> => {
+  const res = await fetch('/api/documents', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to create document request');
+  }
+  return await res.json();
+};
+
+export const deleteDocumentRequest = async (id: string): Promise<void> => {
+  const res = await fetch(`/api/documents/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to delete document request');
+};
+

@@ -1,22 +1,35 @@
-import os
+"""Database configuration with connection pooling."""
+from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from src.models.base import Base
+from src.config.settings import get_settings
 
-# Note: In production, the DATABASE_URL should come from environment variables.
-# For now, we default to SQLite in-memory for testing, but can be overridden.
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///:memory:"
-)
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
-)
+def create_engine_with_pooling():
+    """Create SQLAlchemy engine with production-ready connection pooling."""
+    settings = get_settings()
+    
+    # SQLite-specific connect args
+    connect_args = {"check_same_thread": False} if "sqlite" in settings.database_url else {}
+    
+    engine = create_engine(
+        settings.database_url,
+        connect_args=connect_args,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle,
+        pool_pre_ping=settings.db_pool_pre_ping,
+    )
+    return engine
+
+
+engine = create_engine_with_pooling()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def get_db():
+    """FastAPI dependency for request-scoped DB session."""
     db = SessionLocal()
     try:
         yield db
@@ -24,15 +37,9 @@ def get_db():
         db.close()
 
 
-from contextlib import contextmanager
-
 @contextmanager
 def get_session():
-    """Context-manager that yields a SQLAlchemy session.
-
-    Use this in non-FastAPI contexts (e.g. Azure Function entry points)
-    where Depends(get_db) is not available.
-    """
+    """Context-manager for non-FastAPI contexts (workers, functions)."""
     db = SessionLocal()
     try:
         yield db

@@ -5,7 +5,7 @@ invoice from the database, sends the reminder email, and logs the result
 to the reminder_log table.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.db import get_session
 from src.models.invoice import Invoice
@@ -36,11 +36,11 @@ def handle_invoice_reminder(invoice_id: str) -> None:
 
         log_entry = ReminderLog(
             invoice_id=invoice_id,
-            sent_at=datetime.utcnow(),
+            sent_at=datetime.now(timezone.utc),
             channel=Channel.email,
             payload={'invoice_number': inv.invoice_number, 'debtor_email': inv.debtor.email},
             status=status,
         )
         sess.add(log_entry)
-        inv.last_reminder_sent = datetime.utcnow()
+        inv.last_reminder_sent = datetime.now(timezone.utc)
         sess.commit()

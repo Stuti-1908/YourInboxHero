@@ -30,7 +30,7 @@ class AnalyticsResponse(BaseModel):
     status_breakdown: Dict[str, int]
     monthly_recovered: List[MonthlyRecovered]
 
-@router.get("/api/analytics", response_model=AnalyticsResponse)
+@router.get("/analytics", response_model=AnalyticsResponse)
 def get_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     invoices = (
         db.query(Invoice)

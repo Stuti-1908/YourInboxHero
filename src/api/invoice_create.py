@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 from datetime import date
 from src.db import get_db
@@ -10,13 +11,14 @@ from src.models.user import User
 
 router = APIRouter()
 
-class InvoiceCreateRequest(BaseModel):
+class InvoiceCreate(BaseModel):
     debtor_id: str
     invoice_number: str
     amount: float
-    description: str = None
+    description: Optional[str] = None
     due_date: date
-    payment_instructions: str = None
+    payment_instructions: Optional[str] = None
+    payment_link: Optional[str] = None
 
 class InvoiceResponse(BaseModel):
     id: str
@@ -26,7 +28,7 @@ class InvoiceResponse(BaseModel):
     status: str
 
 @router.post('/invoice', response_model=InvoiceResponse)
-def create_invoice(request: InvoiceCreateRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_invoice(request: InvoiceCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Create a new invoice for a debtor belonging to the authenticated client."""
     # Verify the debtor belongs to the user
     debtor = db.query(Debtor).filter(Debtor.id == request.debtor_id, Debtor.user_id == current_user.id).first()
@@ -50,6 +52,7 @@ def create_invoice(request: InvoiceCreateRequest, db: Session = Depends(get_db),
         description=request.description,
         due_date=request.due_date,
         payment_instructions=request.payment_instructions,
+        payment_link=request.payment_link,
         status=status
     )
     db.add(new_invoice)

@@ -10,13 +10,14 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [description, setDescription] = useState('');
+  const [paymentLink, setPaymentLink] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchDebtors()
       .then(data => setDebtors(data))
-      .catch(err => setError('Failed to load debtors.'));
+      .catch(() => setError('Failed to load debtors.'));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,13 +36,15 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
         invoice_number: invoiceNumber,
         amount: parseFloat(amount),
         due_date: dueDate,
-        description
+        description,
+        payment_link: paymentLink || undefined
       });
       setDebtorId('');
       setInvoiceNumber('');
       setAmount('');
       setDueDate('');
       setDescription('');
+      setPaymentLink('');
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Failed to create invoice');
@@ -86,6 +89,11 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
         <div className="form-group">
           <label>Description (Optional)</label>
           <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Consulting Services" />
+        </div>
+        <div className="form-group">
+          <label>Payment Link (Optional)</label>
+          <input type="url" value={paymentLink} onChange={(e) => setPaymentLink(e.target.value)} placeholder="https://buy.stripe.com/..." />
+          <small style={{ color: 'var(--color-text-light)', fontSize: '0.8rem', marginTop: '4px', display: 'block' }}>Add a payment link (e.g. Stripe, Square) to include in reminders.</small>
         </div>
         <div className="form-actions">
           <button type="submit" className="btn-primary" disabled={loading}>
