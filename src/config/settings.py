@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     )
     
     # External services
-    sendgrid_api_key: Optional[str] = Field(default=None, description="SendGrid API key for fallback emails")
+    resend_api_key: Optional[str] = Field(default=None, description="Resend API key for fallback emails")
+    resend_from_email: str = Field(default="reminders@yourinboxhero.com", description="Default From address for Resend sends")
     ghl_api_key: Optional[str] = Field(default=None, description="GoHighLevel API key for SMS/Voice")
     ghl_location_id: Optional[str] = Field(default=None, description="GoHighLevel location ID")
     
@@ -33,9 +34,11 @@ class Settings(BaseSettings):
     service_bus_connection_string: Optional[str] = Field(default=None)
     reminder_queue_name: str = Field(default="reminder-queue")
     
-    # Stripe (for future payment integration)
+    # Stripe (payment/subscription processing)
     stripe_secret_key: Optional[str] = Field(default=None)
-    stripe_webhook_secret: Optional[str] = Field(default=None)
+    stripe_webhook_secret: Optional[str] = Field(default=None, description="Signing secret for verifying Stripe webhook events")
+    stripe_success_url: str = Field(default="http://localhost:5173/payment-success", description="Redirect after successful Checkout")
+    stripe_cancel_url: str = Field(default="http://localhost:5173/", description="Redirect if Checkout is cancelled")
     
     # Environment
     environment: str = Field(default="development", description="development|staging|production")
@@ -57,6 +60,12 @@ class Settings(BaseSettings):
     email_lookahead_days: int = Field(default=14, description="Days ahead to send pre-due reminders")
     email_to_sms_days: int = Field(default=15, description="Days before email→SMS escalation")
     sms_to_voice_days: int = Field(default=7, description="Days before SMS→Voice escalation")
+
+    # Stripe Price IDs — created in the Stripe Dashboard (Products > Pricing).
+    # Each must be a recurring monthly price matching the plan's advertised amount.
+    stripe_price_starter: Optional[str] = Field(default=None, description="Stripe Price ID for the Starter plan ($149/mo)")
+    stripe_price_growth: Optional[str] = Field(default=None, description="Stripe Price ID for the Growth plan ($299/mo)")
+    stripe_price_scale: Optional[str] = Field(default=None, description="Stripe Price ID for the Scale plan ($497/mo)")
     
     class Config:
         env_file = ".env"
@@ -77,7 +86,7 @@ def validate_production_settings(settings: Settings) -> None:
             raise RuntimeError("SECRET_KEY must be set to a secure value in production")
         if settings.database_url.startswith("sqlite"):
             raise RuntimeError("DATABASE_URL must be PostgreSQL in production")
-        if not settings.sendgrid_api_key:
-            raise RuntimeError("SENDGRID_API_KEY required in production")
+        if not settings.resend_api_key:
+            raise RuntimeError("RESEND_API_KEY required in production")
         if settings.cors_origins == ["http://localhost:5173", "http://localhost:3000"]:
             raise RuntimeError("CORS_ORIGINS must include production frontend domain")

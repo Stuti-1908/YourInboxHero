@@ -102,21 +102,35 @@ def test_get_eligible_today_is_included():
         session.close()
 
 
-def test_process_due_reminders_enqueues(monkeypatch):
-    """process_due_reminders should call enqueue_reminder for each eligible invoice."""
-    # Ensure feature flag is on
+def test_process_due_reminders_sends_directly(monkeypatch):
+    """process_due_reminders should call handle_invoice_reminder for each eligible invoice."""
     monkeypatch.setenv('REMINDERS_ENABLED', 'true')
 
-    session = SessionLocal()
-    try:
-        debtor = _make_debtor(session, name="Process Corp")
-        _make_invoice(session, debtor, date.today() + timedelta(days=2))
-        session.commit()
-    finally:
-        session.close()
+    fake_invoice = type('FakeInvoice', (), {'id': str(uuid.uuid4())})()
 
-    with patch('src.services.queue.enqueue_reminder') as mock_enqueue:
+    with patch('src.services.reminder_service.get_eligible_invoices', return_value=[fake_invoice]), \
+         patch('src.services.reminder_worker.handle_invoice_reminder') as mock_handle:
         from src.services.reminder_service import process_due_reminders
         process_due_reminders()
-        assert mock_enqueue.call_count >= 1
+        assert mock_handle.call_count == 1
+        mock_handle.assert_called_once_with(fake_invoice.id)
+
+
+def test_process_due_reminders_isolates_failures(monkeypatch):
+    """One invoice failing to send must not prevent the others from being processed."""
+    monkeypatch.setenv('REMINDERS_ENABLED', 'true')
+
+    fake_invoices = [
+        type('FakeInvoice', (), {'id': str(uuid.uuid4())})(),
+        type('FakeInvoice', (), {'id': str(uuid.uuid4())})(),
+    ]
+
+    with patch('src.services.reminder_service.get_eligible_invoices', return_value=fake_invoices), \
+         patch(
+             'src.services.reminder_worker.handle_invoice_reminder',
+             side_effect=[Exception('SMTP down'), None],
+         ) as mock_handle:
+        from src.services.reminder_service import process_due_reminders
+        process_due_reminders()  # must not raise
+        assert mock_handle.call_count == 2
 

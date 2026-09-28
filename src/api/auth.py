@@ -5,8 +5,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from slowapi.util import get_remote_address
 
+from datetime import datetime, timezone
+
 from src.db import get_db
 from src.models.user import User
+from src.models.pending_subscription import PendingSubscription
 from src.auth import (
     verify_password,
     create_access_token,
@@ -70,9 +73,31 @@ async def register_user(
         company_name=user.company_name
     )
     db.add(db_user)
+    db.flush()  # assign db_user.id before we may reference it below
+
+    # If a Stripe payment already came in for this email (webhook fired
+    # before registration), activate the paid plan immediately instead of
+    # leaving the customer on a free/inactive account they already paid for.
+    pending = db.query(PendingSubscription).filter(PendingSubscription.email == user.username).first()
+    if pending:
+        db_user.subscription_plan = pending.plan
+        db_user.subscription_status = "active"
+        db_user.subscription_started_at = datetime.now(timezone.utc)
+        db_user.stripe_customer_id = pending.stripe_customer_id
+        db_user.stripe_subscription_id = pending.stripe_subscription_id
+        db_user.chases_limit = pending.chases_limit
+        db_user.chases_used = 0
+        db.delete(pending)
+
     db.commit()
     db.refresh(db_user)
-    return {"id": db_user.id, "username": db_user.username, "company_name": db_user.company_name}
+    return {
+        "id": db_user.id,
+        "username": db_user.username,
+        "company_name": db_user.company_name,
+        "subscription_plan": db_user.subscription_plan,
+        "subscription_status": db_user.subscription_status,
+    }
 
 from typing import Optional
 from src.auth import get_current_user

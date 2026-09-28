@@ -25,6 +25,7 @@ class User(Base):
     subscription_plan = Column(String, nullable=True)  # 'starter', 'growth', 'scale'
     subscription_status = Column(String, nullable=False, default="inactive")  # 'inactive', 'active', 'cancelled'
     subscription_started_at = Column(TIMESTAMP, nullable=True)
-    square_payment_id = Column(String, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    stripe_subscription_id = Column(String, nullable=True)
     chases_limit = Column(Integer, nullable=False, default=0)  # 100, 300, 750
     chases_used = Column(Integer, nullable=False, default=0)

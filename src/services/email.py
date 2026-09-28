@@ -4,9 +4,8 @@ import smtplib
 from email.message import EmailMessage
 from typing import Any, Dict
 
+import requests
 import structlog
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 from jinja2 import Environment, FileSystemLoader
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -17,18 +16,7 @@ from src.models.email_template import EmailTemplate
 logger = structlog.get_logger(__name__)
 settings = get_settings()
 
-# Singleton SendGrid client
-_sendgrid_client: SendGridAPIClient | None = None
-
-
-def get_sendgrid_client() -> SendGridAPIClient:
-    """Get or create SendGrid client singleton."""
-    global _sendgrid_client
-    if _sendgrid_client is None:
-        if not settings.sendgrid_api_key:
-            raise RuntimeError("SENDGRID_API_KEY not configured")
-        _sendgrid_client = SendGridAPIClient(settings.sendgrid_api_key)
-    return _sendgrid_client
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def render_template(invoice: Any) -> str:
@@ -94,33 +82,42 @@ def _send_via_smtp(
 @retry(
     wait=wait_exponential(multiplier=1, min=2, max=10),
     stop=stop_after_attempt(3),
-    retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+    retry=retry_if_exception_type((ConnectionError, TimeoutError, requests.exceptions.RequestException)),
     reraise=True,
 )
-def _send_via_sendgrid(
+def _send_via_resend(
     to_email: str,
     subject: str,
     html_body: str,
 ) -> Dict[str, Any]:
-    """Send email via SendGrid with retry logic."""
-    sg = get_sendgrid_client()
-    message = Mail(
-        from_email='reminders@yourinboxhero.com',
-        to_emails=to_email,
-        subject=subject,
-        html_content=html_body,
+    """Send email via Resend with retry logic."""
+    if not settings.resend_api_key:
+        raise RuntimeError("RESEND_API_KEY not configured")
+
+    response = requests.post(
+        RESEND_API_URL,
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": settings.resend_from_email,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+        },
+        timeout=15,
     )
-    response = sg.send(message)
     if response.status_code >= 400:
-        raise Exception(f"SendGrid error {response.status_code}: {response.body}")
-    return {"status": "success", "method": "sendgrid", "status_code": response.status_code}
+        raise Exception(f"Resend error {response.status_code}: {response.text}")
+    return {"status": "success", "method": "resend", "status_code": response.status_code, "id": response.json().get("id")}
 
 
 def send_reminder_email(invoice: Any) -> Dict[str, Any]:
     """
     Send reminder email for an invoice.
-    
-    Tries custom SMTP first, falls back to SendGrid.
+
+    Tries custom SMTP first, falls back to Resend.
     Uses retry logic for transient failures.
     """
     correlation_id = getattr(invoice, 'correlation_id', 'unknown')
@@ -177,21 +174,21 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
             return result
         except Exception as e:
             logger.warning(
-                "smtp_send_failed_falling_back_to_sendgrid",
+                "smtp_send_failed_falling_back_to_resend",
                 invoice_id=str(invoice.id),
                 error=str(e),
                 correlation_id=correlation_id,
             )
-    
-    # Fallback to SendGrid
+
+    # Fallback to Resend
     try:
-        result = _send_via_sendgrid(
+        result = _send_via_resend(
             to_email=invoice.debtor.email,
             subject=subject,
             html_body=html_body,
         )
         logger.info(
-            "reminder_email_sent_sendgrid",
+            "reminder_email_sent_resend",
             invoice_id=str(invoice.id),
             debtor_email=invoice.debtor.email,
             correlation_id=correlation_id,

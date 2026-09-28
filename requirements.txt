@@ -1,7 +1,7 @@
 fastapi
 sqlalchemy
 pydantic
-sendgrid
+requests
 jinja2
 pytest
 pytest-mock
@@ -13,3 +13,4 @@ alembic
 azure-monitor-opentelemetry
 reportlab
 APScheduler
+stripe

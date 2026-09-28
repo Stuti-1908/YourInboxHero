@@ -45,10 +45,11 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
 
 
 def process_due_reminders():
-    """Fetch eligible invoices and enqueue each for async reminder delivery.
+    """Fetch eligible invoices and send each reminder synchronously.
 
-    In production, each invoice ID is pushed onto Azure Service Bus.
-    A consumer function picks up each message and calls the reminder worker.
+    Each invoice is sent and logged independently via handle_invoice_reminder,
+    so one invoice's send failure (bad email, SMTP timeout, etc.) never blocks
+    the rest of the batch or the caller (the daily sweep).
 
     Aborts early if the 'reminders-enabled' feature flag is off.
     """
@@ -64,12 +65,18 @@ def process_due_reminders():
         if not invoices:
             logging.info('No eligible invoices found')
             return
+        invoice_ids = [str(inv.id) for inv in invoices]
 
-        from src.services.queue import enqueue_reminder
+    from src.services.reminder_worker import handle_invoice_reminder
 
-        for inv in invoices:
-            enqueue_reminder(str(inv.id))
-            inv.last_reminder_sent = datetime.now(timezone.utc)
-            logging.info(f'Enqueued reminder for invoice {inv.id}')
-        sess.commit()
-        logging.info(f'Enqueued {len(invoices)} reminder(s)')
+    sent = 0
+    failed = 0
+    for invoice_id in invoice_ids:
+        try:
+            handle_invoice_reminder(invoice_id)
+            sent += 1
+        except Exception as exc:
+            failed += 1
+            logging.error(f'Reminder failed for invoice {invoice_id}: {exc}')
+
+    logging.info(f'Processed {len(invoice_ids)} reminder(s): {sent} sent, {failed} failed')

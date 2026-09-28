@@ -167,18 +167,8 @@ async def readiness_probe(request: Request, db: Session = Depends(lambda: next(g
         logger.error("Database health check failed", extra={"correlation_id": correlation_id, "error": str(e)})
         checks["database"] = "unhealthy"
     
-    # SendGrid (if configured)
-    if settings.sendgrid_api_key:
-        try:
-            from sendgrid import SendGridAPIClient
-            sg = SendGridAPIClient(settings.sendgrid_api_key)
-            # Just verify client creation works
-            checks["sendgrid"] = "healthy"
-        except Exception as e:
-            logger.warning("SendGrid health check failed", extra={"correlation_id": correlation_id, "error": str(e)})
-            checks["sendgrid"] = "degraded"
-    else:
-        checks["sendgrid"] = "not_configured"
+    # Resend (if configured)
+    checks["resend"] = "healthy" if settings.resend_api_key else "not_configured"
     
     # Overall readiness
     all_healthy = all(v in ("healthy", "not_configured") for v in checks.values())
@@ -226,9 +216,9 @@ from src.api.document_client import router as document_client_router
 app.include_router(document_request_router, prefix="", tags=["documents"])
 app.include_router(document_client_router, prefix="", tags=["document_clients"])
 
-from src.api.square_payments import router as square_payments_router
-# Public: Square webhook + plan activation + plans listing
-app.include_router(square_payments_router, prefix="/api/payments", tags=["payments"])
+from src.api.stripe_payments import router as stripe_payments_router
+# Public: Stripe webhook + checkout session creation + plans listing
+app.include_router(stripe_payments_router, prefix="/api/payments", tags=["payments"])
 
 
 # ============================================================
@@ -261,7 +251,7 @@ api_v1.include_router(email_template_router, prefix="", dependencies=[Depends(ge
 api_v1.include_router(document_request_router, prefix="", tags=["documents"])
 api_v1.include_router(document_client_router, prefix="", tags=["document_clients"])
 
-api_v1.include_router(square_payments_router, prefix="/payments", tags=["payments"])
+api_v1.include_router(stripe_payments_router, prefix="/payments", tags=["payments"])
 
 # Mount API v1
 app.include_router(api_v1)

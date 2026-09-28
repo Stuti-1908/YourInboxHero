@@ -1,8 +1,68 @@
 import { useEffect, useState } from 'react';
 import './LandingPage.css';
 
+async function startCheckout(plan: string, email: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch('/api/payments/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan, email }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.detail || 'Could not start checkout. Please try again.' };
+    }
+    const data = await res.json();
+    window.location.href = data.checkout_url;
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Connection error. Please try again.' };
+  }
+}
+
+const PlanCheckoutModal = ({ plan, planName, onClose }: { plan: string; planName: string; onClose: () => void }) => {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (!email) return;
+    setLoading(true);
+    setError('');
+    const result = await startCheckout(plan, email);
+    if (!result.ok) {
+      setError(result.error);
+      setLoading(false);
+    }
+    // On success, startCheckout redirects the page — no further state needed.
+  };
+
+  return (
+    <div className="checkout-modal-overlay" onClick={onClose}>
+      <div className="checkout-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Get the {planName} plan</h3>
+        <p>Enter your email to continue to secure checkout.</p>
+        {error && <div className="checkout-modal-error">{error}</div>}
+        <input
+          type="email"
+          placeholder="you@company.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          autoFocus
+        />
+        <button className="btn-gold" onClick={handleSubmit} disabled={!email || loading}>
+          {loading ? 'Redirecting…' : 'Continue to Checkout'}
+        </button>
+        <button className="checkout-modal-close" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+};
+
 export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => void, onSignIn: () => void }) => {
   const [activeTab, setActiveTab] = useState(0);
+  const [checkoutPlan, setCheckoutPlan] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     const hiddenElements = document.querySelectorAll('.reveal');
@@ -182,7 +242,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
               <li>Payment link integration</li>
               <li>Document collection</li>
             </ul>
-            <a href="https://square.link/u/MOsw5n5g" target="_blank" rel="noopener noreferrer" className="btn-pricing" style={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}>Get Starter</a>
+            <button onClick={() => setCheckoutPlan({ id: 'starter', name: 'Starter' })} className="btn-pricing">Get Starter</button>
           </div>
 
           <div className="pricing-card premium">
@@ -198,7 +258,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
               <li>Custom SMTP integration</li>
               <li>Priority support</li>
             </ul>
-            <a href="https://square.link/u/nYps8IHC" target="_blank" rel="noopener noreferrer" className="btn-pricing" style={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}>Get Growth</a>
+            <button onClick={() => setCheckoutPlan({ id: 'growth', name: 'Growth' })} className="btn-pricing">Get Growth</button>
           </div>
 
           <div className="pricing-card">
@@ -213,7 +273,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
               <li>Dedicated account manager</li>
               <li>Custom SLAs</li>
             </ul>
-            <a href="https://square.link/u/IqJw5Qom" target="_blank" rel="noopener noreferrer" className="btn-pricing" style={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}>Get Scale</a>
+            <button onClick={() => setCheckoutPlan({ id: 'scale', name: 'Scale' })} className="btn-pricing">Get Scale</button>
           </div>
 
         </div>
@@ -223,6 +283,14 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
       <footer className="landing-footer">
         <p>&copy; {new Date().getFullYear()} YourInboxHero. Engineered for excellence.</p>
       </footer>
+
+      {checkoutPlan && (
+        <PlanCheckoutModal
+          plan={checkoutPlan.id}
+          planName={checkoutPlan.name}
+          onClose={() => setCheckoutPlan(null)}
+        />
+      )}
     </div>
   );
 };

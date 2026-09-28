@@ -219,24 +219,24 @@ def run_daily_sweep():
                 logger.info("daily_sweep_skipped_another_instance_running")
                 return
             
-            # 1. Mark past-due invoices as overdue
-            num_overdue = transition_overdue(db)
-            logger.info("overdue_transition_completed", count=num_overdue)
-            
-            # 2. Process email reminders for upcoming/due invoices
-            if settings.reminders_enabled:
-                process_due_reminders()
-            else:
-                logger.info("reminders_disabled_via_settings")
-            
-            # 3. Escalation: promote overdue invoices through tiers
-            run_escalation_sweep(db)
-            
-            # 4. Send SMS for tier-2 invoices
-            run_sms_reminders(db)
-            
-            # 5. Trigger voice calls for tier-3 invoices
-            run_voice_calls(db)
+            # Each step is isolated: a failure in one (e.g. email provider
+            # outage) must not prevent the others from running, since they
+            # cover different invoices/channels.
+            steps = [
+                ("overdue_transition", lambda: transition_overdue(db)),
+                ("pre_due_reminders", lambda: process_due_reminders() if settings.reminders_enabled
+                    else logger.info("reminders_disabled_via_settings")),
+                ("escalation_sweep", lambda: run_escalation_sweep(db)),
+                ("sms_reminders", lambda: run_sms_reminders(db)),
+                ("voice_calls", lambda: run_voice_calls(db)),
+            ]
+            for step_name, step_fn in steps:
+                try:
+                    result = step_fn()
+                    if step_name == "overdue_transition":
+                        logger.info("overdue_transition_completed", count=result)
+                except Exception as e:
+                    logger.error(f"daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
             
     except Exception as e:
         logger.error("daily_sweep_failed", error=str(e), exc_info=True)
