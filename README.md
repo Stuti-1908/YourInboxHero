@@ -1,2 +1,2 @@
-# YourInboxHero — Debt Reminder Feature
+# YourInboxHero - Debt Reminder Feature
 
