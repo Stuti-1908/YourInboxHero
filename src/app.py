@@ -86,23 +86,33 @@ async def lifespan(app: FastAPI):
     # Validate production settings
     settings = get_settings()
     validate_production_settings(settings)
-    
+
     # Ensure tables are created (useful if alembic isn't run in dev)
     Base.metadata.create_all(bind=engine)
-    
-    # Seed default admin user
-    db = SessionLocal()
-    try:
-        if db.query(User).count() == 0:
-            logger.info("Seeding default admin user")
-            admin_user = User(username="admin", hashed_password=get_password_hash("admin"), company_name="YourInboxHero Admin")
-            db.add(admin_user)
-            db.commit()
-    finally:
-        db.close()
-    
+
+    # Seed a default admin user for local development only. In production
+    # this would create a well-known admin/admin login on a public app —
+    # never seed default credentials outside dev.
+    if settings.environment == "development":
+        db = SessionLocal()
+        try:
+            if db.query(User).count() == 0:
+                logger.info("Seeding default admin user (development only)")
+                admin_user = User(username="admin", hashed_password=get_password_hash("admin"), company_name="YourInboxHero Admin")
+                db.add(admin_user)
+                db.commit()
+        finally:
+            db.close()
+
+    # Start the daily sweep scheduler (overdue transition, reminders,
+    # SMS/voice escalation). Runs in-process; the distributed advisory lock
+    # in scheduler.py keeps it safe if this app ever scales to >1 instance.
+    from src.scheduler import start_scheduler, shutdown_scheduler
+    start_scheduler()
+
     logger.info("Application startup complete", extra={"environment": settings.environment})
     yield
+    shutdown_scheduler()
     logger.info("Application shutdown")
 
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { API_BASE } from '../api/invoice';
 import './LandingPage.css';
 
 async function startCheckout(plan: string, email: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await fetch('/api/payments/create-checkout-session', {
+    const res = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan, email }),

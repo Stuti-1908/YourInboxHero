@@ -1,3 +1,10 @@
+// In production the frontend (Vercel) and backend (a separate host) live on
+// different domains, so relative "/api/..." paths would hit Vercel itself.
+// VITE_API_BASE_URL points at the real backend (e.g. https://api.yourinboxhero.com);
+// left unset, it defaults to same-origin, which is what local dev's Vite
+// proxy (vite.config.ts) expects.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
 export interface Invoice {
   id: string;
   invoice_number: string;
@@ -45,7 +52,7 @@ const getAuthHeaders = () => {
 };
 
 export const fetchInvoices = async (): Promise<Invoice[]> => {
-  const res = await fetch('/api/invoice', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/invoice`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -55,7 +62,7 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
 };
 
 export const fetchAnalytics = async (): Promise<AnalyticsData> => {
-  const res = await fetch('/api/analytics', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/analytics`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -66,7 +73,7 @@ export const fetchAnalytics = async (): Promise<AnalyticsData> => {
 
 
 export const pauseInvoice = async (id: string): Promise<void> => {
-  const res = await fetch(`/api/invoice/${id}/pause`, { 
+  const res = await fetch(`${API_BASE}/api/invoice/${id}/pause`, { 
     method: 'POST',
     headers: getAuthHeaders()
   });
@@ -74,7 +81,7 @@ export const pauseInvoice = async (id: string): Promise<void> => {
 };
 
 export const fetchDebtors = async (): Promise<Debtor[]> => {
-  const res = await fetch('/api/debtor', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/debtor`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -84,7 +91,7 @@ export const fetchDebtors = async (): Promise<Debtor[]> => {
 };
 
 export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
-  const res = await fetch('/api/debtor', {
+  const res = await fetch(`${API_BASE}/api/debtor`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -101,7 +108,7 @@ export const createDebtor = async (data: { name: string; email: string; phone?: 
 };
 
 export const deleteDebtor = async (id: string): Promise<void> => {
-  const res = await fetch(`/api/debtor/${id}`, {
+  const res = await fetch(`${API_BASE}/api/debtor/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
@@ -113,7 +120,7 @@ export const deleteDebtor = async (id: string): Promise<void> => {
 };
 
 export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_link?: string; payment_instructions?: string }): Promise<Invoice> => {
-  const res = await fetch('/api/invoice', {
+  const res = await fetch(`${API_BASE}/api/invoice`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -130,7 +137,7 @@ export const login = async (username: string, password: string): Promise<string>
   formData.append('username', username);
   formData.append('password', password);
 
-  const res = await fetch('/api/token', {
+  const res = await fetch(`${API_BASE}/api/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formData.toString()
@@ -143,7 +150,7 @@ export const login = async (username: string, password: string): Promise<string>
 };
 
 export const register = async (username: string, password: string, company_name: string): Promise<void> => {
-  const res = await fetch('/api/users/register', {
+  const res = await fetch(`${API_BASE}/api/users/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, company_name })
@@ -178,7 +185,7 @@ export const logout = () => {
 };
 
 export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {
-  const res = await fetch(`/api/invoice/${invoiceId}/pdf`, {
+  const res = await fetch(`${API_BASE}/api/invoice/${invoiceId}/pdf`, {
     headers: getAuthHeaders()
   });
   if (res.status === 401) {
@@ -199,7 +206,7 @@ export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {
 };
 
 export const fetchEmailTemplates = async (): Promise<EmailTemplate[]> => {
-  const res = await fetch('/api/email-template', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/email-template`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -209,7 +216,7 @@ export const fetchEmailTemplates = async (): Promise<EmailTemplate[]> => {
 };
 
 export const saveEmailTemplate = async (data: { template_type: string; subject: string; body: string }): Promise<EmailTemplate> => {
-  const res = await fetch('/api/email-template', {
+  const res = await fetch(`${API_BASE}/api/email-template`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -229,7 +236,7 @@ export const getMe = async (): Promise<any> => {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/users/me', {
+  const res = await fetch(`${API_BASE}/api/users/me`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
 
@@ -245,7 +252,7 @@ export const updateSettings = async (settings: any): Promise<void> => {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/users/me', {
+  const res = await fetch(`${API_BASE}/api/users/me`, {
     method: 'PUT',
     headers: { 
       'Authorization': `Bearer ${token}`,
@@ -285,14 +292,14 @@ export interface DocumentRequest {
 }
 
 export const getDocumentClients = async (): Promise<DocumentClient[]> => {
-  const res = await fetch('/api/document-clients', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/document-clients`, { headers: getAuthHeaders() });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to fetch document clients');
   return await res.json();
 };
 
 export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Promise<DocumentClient> => {
-  const res = await fetch('/api/document-clients', {
+  const res = await fetch(`${API_BASE}/api/document-clients`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -305,14 +312,14 @@ export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Pr
 };
 
 export const fetchDocumentRequests = async (): Promise<DocumentRequest[]> => {
-  const res = await fetch('/api/documents', { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/api/documents`, { headers: getAuthHeaders() });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to fetch document requests');
   return await res.json();
 };
 
 export const createDocumentRequest = async (data: { client_id: string; title: string; description?: string; due_date: string }): Promise<DocumentRequest> => {
-  const res = await fetch('/api/documents', {
+  const res = await fetch(`${API_BASE}/api/documents`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -325,7 +332,7 @@ export const createDocumentRequest = async (data: { client_id: string; title: st
 };
 
 export const deleteDocumentRequest = async (id: string): Promise<void> => {
-  const res = await fetch(`/api/documents/${id}`, {
+  const res = await fetch(`${API_BASE}/api/documents/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders()
   });
