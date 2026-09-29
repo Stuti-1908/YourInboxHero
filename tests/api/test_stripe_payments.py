@@ -122,3 +122,70 @@ def test_activate_endpoint_no_longer_exists():
     it was a security hole allowing anyone to grant themselves a paid plan."""
     resp = client.post("/api/payments/activate", json={"email": "a@b.com", "plan": "growth"})
     assert resp.status_code in (404, 405)
+
+
+def test_webhook_marks_subscription_past_due_on_payment_failure(monkeypatch):
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_customer_id = "cus_fake456"
+        user.subscription_status = "active"
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_fail1",
+        "type": "invoice.payment_failed",
+        "data": {"object": {"customer": "cus_fake456"}},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+
+    assert resp.status_code == 200
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.subscription_status == "past_due"
+    finally:
+        session.close()
+
+
+def test_webhook_reactivates_subscription_on_payment_success_after_past_due(monkeypatch):
+    """A subscription that lapsed to past_due must flip back to active once
+    a retried/renewed payment succeeds -- this was a real gap: nothing
+    previously listened for invoice.payment_succeeded at all."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_customer_id = "cus_fake789"
+        user.subscription_status = "past_due"
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_success1",
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"customer": "cus_fake789"}},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+
+    assert resp.status_code == 200
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.subscription_status == "active"
+    finally:
+        session.close()

@@ -7,26 +7,29 @@ Environment Variables Required:
     GHL_API_KEY      - Your GHL API Bearer token
     GHL_LOCATION_ID  - Your GHL Location/Sub-account ID
 """
-import os
 import logging
 import requests
 from typing import Optional
 
+from src.config.settings import get_settings
+
 GHL_BASE_URL = "https://services.leadconnectorhq.com"
 
+
 def _get_headers() -> dict:
-    api_key = os.getenv("GHL_API_KEY", "")
-    if not api_key:
+    settings = get_settings()
+    if not settings.ghl_api_key:
         logging.warning("GHL_API_KEY not set — SMS/Voice escalation disabled")
         return {}
     return {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {settings.ghl_api_key}",
         "Content-Type": "application/json",
         "Version": "2021-07-28"
     }
 
+
 def _get_location_id() -> str:
-    return os.getenv("GHL_LOCATION_ID", "")
+    return get_settings().ghl_location_id or ""
 
 
 def find_or_create_contact(name: str, email: str, phone: str) -> Optional[str]:

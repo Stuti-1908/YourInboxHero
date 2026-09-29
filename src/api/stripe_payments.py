@@ -156,6 +156,20 @@ async def stripe_webhook(request: Request):
                 logger.warning("subscription_payment_failed", user_id=user.id)
             return {"msg": "Payment failure recorded"}
 
+        elif event_type == "invoice.payment_succeeded":
+            # Covers monthly renewals, and recovery from a prior past_due
+            # state once a retried payment succeeds. The very first payment
+            # is handled by checkout.session.completed above; this event also
+            # fires then, but the user lookup is a no-op (already active) so
+            # it's safe to double-handle.
+            invoice = event["data"]["object"]
+            user = db.query(User).filter(User.stripe_customer_id == invoice.get("customer")).first()
+            if user and user.subscription_status != "active":
+                user.subscription_status = "active"
+                db.commit()
+                logger.info("subscription_reactivated_after_payment", user_id=user.id)
+            return {"msg": "Payment success recorded"}
+
         return {"msg": f"Event received: {event_type}"}
     finally:
         db.close()
