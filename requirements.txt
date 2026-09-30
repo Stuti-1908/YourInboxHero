@@ -1,6 +1,8 @@
 fastapi
+uvicorn[standard]
 sqlalchemy
 pydantic
+pydantic-settings
 requests
 jinja2
 pytest
@@ -14,3 +16,7 @@ azure-monitor-opentelemetry
 reportlab
 APScheduler
 stripe
+slowapi
+structlog
+tenacity
+psycopg2-binary
