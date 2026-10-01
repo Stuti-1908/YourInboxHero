@@ -253,6 +253,33 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
         </div>
       </section>
 
+      <section className="product-shots-section reveal">
+        <div className="section-heading">
+          <h2>See it in action</h2>
+          <p>The actual dashboard — not a mockup. This is what you'll be working in from day one.</p>
+        </div>
+        <div className="product-shots-grid">
+          <div className="product-shot">
+            <div className="product-shot-frame">
+              <div className="product-shot-chrome">
+                <span /><span /><span />
+              </div>
+              <img src="/dashboard-invoices.png" alt="The invoices dashboard, showing invoice numbers, amounts, due dates, and overdue or upcoming status for each one" loading="lazy" />
+            </div>
+            <p className="product-shot-caption">Every invoice, its status, and one click to pause reminders or pull a PDF.</p>
+          </div>
+          <div className="product-shot">
+            <div className="product-shot-frame">
+              <div className="product-shot-chrome">
+                <span /><span /><span />
+              </div>
+              <img src="/dashboard-analytics.png" alt="The analytics dashboard, showing total outstanding, total recovered, recovery rate, an aging report, and a status breakdown" loading="lazy" />
+            </div>
+            <p className="product-shot-caption">Outstanding balance, aging, and recovery — at a glance, updated as reminders go out.</p>
+          </div>
+        </div>
+      </section>
+
       <section className="guardrails-section reveal">
         <div className="section-heading">
           <h2>Built with limits on purpose</h2>

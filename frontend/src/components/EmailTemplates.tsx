@@ -125,7 +125,7 @@ const Templates: React.FC = () => {
             color: medium === 'email' ? '#fff' : 'var(--color-text)'
           }}
         >
-          ✉️ Email
+          Email
         </button>
         <button
           onClick={() => setMedium('sms')}
@@ -140,7 +140,7 @@ const Templates: React.FC = () => {
             color: medium === 'sms' ? '#fff' : 'var(--color-text)'
           }}
         >
-          💬 SMS
+          SMS
         </button>
       </div>
 
@@ -160,7 +160,7 @@ const Templates: React.FC = () => {
 
       <div className="form-container">
         <h3 style={{ marginBottom: '15px' }}>
-          {medium === 'email' ? '✉️' : '💬'} {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} {medium === 'email' ? 'Email' : 'SMS'} Template
+          {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} {medium === 'email' ? 'Email' : 'SMS'} Template
         </h3>
         <form onSubmit={handleSubmit}>
           {medium === 'email' && (

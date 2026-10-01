@@ -34,7 +34,6 @@ export const PaymentSuccess = ({
   return (
     <div className="login-page" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="login-card" style={{ maxWidth: '500px', textAlign: 'center' }}>
-        <div style={{ fontSize: '4rem', marginBottom: '16px' }}>🎉</div>
         <h2 style={{ marginBottom: '8px' }}>Payment Successful!</h2>
 
         {planInfo && (

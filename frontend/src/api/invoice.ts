@@ -58,7 +58,10 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
     window.location.reload();
   }
   if (!res.ok) throw new Error('Failed to fetch invoices');
-  return await res.json();
+  // The backend returns a paginated envelope ({items, total, page, ...}),
+  // not a bare array — unwrap it so callers always get a plain Invoice[].
+  const data = await res.json();
+  return data.items ?? data;
 };
 
 export const fetchAnalytics = async (): Promise<AnalyticsData> => {
@@ -87,7 +90,9 @@ export const fetchDebtors = async (): Promise<Debtor[]> => {
     window.location.reload();
   }
   if (!res.ok) throw new Error('Failed to fetch debtors');
-  return await res.json();
+  // Paginated envelope ({items, total, page, ...}), not a bare array.
+  const data = await res.json();
+  return data.items ?? data;
 };
 
 export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
@@ -181,7 +186,6 @@ export const getCompanyName = (): string => {
 export const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('company_name');
-  window.location.reload();
 };
 
 export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {

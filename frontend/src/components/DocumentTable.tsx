@@ -51,12 +51,6 @@ export const DocumentTable: React.FC = () => {
     );
   };
 
-  const getTierIcon = (tier: string) => {
-    if (tier === 'sms') return '💬';
-    if (tier === 'voice') return '📞';
-    return '📧';
-  };
-
   if (loading) return <div className="loading">Loading document requests...</div>;
 
   return (
@@ -99,7 +93,7 @@ export const DocumentTable: React.FC = () => {
                 <td>{getStatusBadge(doc.status)}</td>
                 <td>
                   <span title={`Tier: ${doc.escalation_tier}`}>
-                    {getTierIcon(doc.escalation_tier)} {doc.escalation_tier.toUpperCase()}
+                    {doc.escalation_tier.toUpperCase()}
                   </span>
                   {doc.sms_sent_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-light)' }}>{doc.sms_sent_count} SMS</small>}
                   {doc.voice_call_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-light)' }}>{doc.voice_call_count} calls</small>}

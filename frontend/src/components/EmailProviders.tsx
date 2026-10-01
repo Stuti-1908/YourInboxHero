@@ -4,7 +4,6 @@ import './Forms.css';
 
 interface ProviderConfig {
   name: string;
-  icon: string;
   host: string;
   port: string;
   instructions: string[];
@@ -13,7 +12,6 @@ interface ProviderConfig {
 const PROVIDERS: ProviderConfig[] = [
   {
     name: 'Google (Gmail)',
-    icon: '📧',
     host: 'smtp.gmail.com',
     port: '587',
     instructions: [
@@ -27,7 +25,6 @@ const PROVIDERS: ProviderConfig[] = [
   },
   {
     name: 'Yahoo Mail',
-    icon: '💜',
     host: 'smtp.mail.yahoo.com',
     port: '587',
     instructions: [
@@ -41,7 +38,6 @@ const PROVIDERS: ProviderConfig[] = [
   },
   {
     name: 'Outlook / Microsoft 365',
-    icon: '🔵',
     host: 'smtp.office365.com',
     port: '587',
     instructions: [
@@ -152,7 +148,7 @@ export const EmailProviders = () => {
           alignItems: 'center'
         }}>
           <div>
-            <strong style={{ color: '#166534' }}>✅ Connected</strong>
+            <strong style={{ color: '#166534' }}>Connected</strong>
             <p style={{ color: '#15803d', margin: '4px 0 0', fontSize: '0.9rem' }}>
               Reminders are being sent via <strong>{connectedProvider}</strong>
             </p>
@@ -191,7 +187,6 @@ export const EmailProviders = () => {
               transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>{provider.icon}</div>
             <h4 style={{ margin: 0, fontSize: '0.95rem' }}>{provider.name}</h4>
           </div>
         ))}
@@ -209,7 +204,7 @@ export const EmailProviders = () => {
             padding: '16px', 
             marginBottom: '20px' 
           }}>
-            <strong style={{ color: '#92400e', fontSize: '0.9rem' }}>📋 Setup Instructions:</strong>
+            <strong style={{ color: '#92400e', fontSize: '0.9rem' }}>Setup Instructions:</strong>
             <ol style={{ margin: '10px 0 0', paddingLeft: '20px', color: '#78350f', fontSize: '0.88rem', lineHeight: '1.8' }}>
               {selectedProvider.instructions.map((step, i) => (
                 <li key={i}>{step}</li>
