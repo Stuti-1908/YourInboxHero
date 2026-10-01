@@ -1,5 +1,6 @@
 """Authentication endpoints with rate limiting."""
 from datetime import timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -57,6 +58,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
     company_name: str
+    invite_code: Optional[str] = None
 
 @router.post("/users/register", status_code=status.HTTP_201_CREATED)
 async def register_user(
@@ -70,15 +72,17 @@ async def register_user(
 
     settings = get_settings()
     is_admin = settings.is_admin_email(user.username)
+    has_valid_invite = settings.is_valid_invite_code(user.invite_code)
 
     # A Stripe payment landing for this email (via webhook, before the
     # customer ever registers) is the only path to a paid plan — see
     # stripe_payments.py's PendingSubscription handling. Without one (or an
-    # admin bypass), there's nothing to grant an account access to, so we
-    # refuse the signup rather than create a free/inactive account that
-    # looks legitimate but can't actually do anything.
+    # admin-email or shared test-invite-code bypass), there's nothing to
+    # grant an account access to, so we refuse the signup rather than
+    # create a free/inactive account that looks legitimate but can't
+    # actually do anything.
     pending = db.query(PendingSubscription).filter(PendingSubscription.email == user.username).first()
-    if not pending and not is_admin:
+    if not pending and not is_admin and not has_valid_invite:
         raise HTTPException(
             status_code=402,
             detail="No active plan found for this email. Choose a plan and complete checkout before creating an account.",
@@ -101,7 +105,7 @@ async def register_user(
         db_user.chases_limit = pending.chases_limit
         db_user.chases_used = 0
         db.delete(pending)
-    elif is_admin:
+    elif is_admin or has_valid_invite:
         db_user.subscription_plan = "scale"
         db_user.subscription_status = "active"
         db_user.subscription_started_at = datetime.now(timezone.utc)
@@ -118,7 +122,6 @@ async def register_user(
         "subscription_status": db_user.subscription_status,
     }
 
-from typing import Optional
 from src.auth import get_current_user
 
 class UserSettingsUpdate(BaseModel):

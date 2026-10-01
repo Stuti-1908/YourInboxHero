@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     # payment — for admin/support/test accounts only. Never expose publicly.
     admin_emails: str = Field(default="", description="Comma-separated emails exempt from the paid-plan registration gate")
 
+    # A single shared secret that also bypasses the paid-plan registration
+    # gate, for handing out to testers (managers, colleagues, QA) without
+    # maintaining an allowlist of their individual emails. Unset by default
+    # (empty string never matches a submitted code, even an empty one).
+    test_invite_code: str = Field(default="", description="Shared invite code exempt from the paid-plan registration gate")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -79,6 +85,14 @@ class Settings(BaseSettings):
     def is_admin_email(self, email: str) -> bool:
         admins = {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
         return email.strip().lower() in admins
+
+    def is_valid_invite_code(self, code: Optional[str]) -> bool:
+        # No code configured, or nothing submitted, never matches — an
+        # empty TEST_INVITE_CODE must not silently accept an empty string.
+        if not self.test_invite_code or not code:
+            return False
+        import hmac
+        return hmac.compare_digest(code.strip(), self.test_invite_code)
 
 
 @lru_cache

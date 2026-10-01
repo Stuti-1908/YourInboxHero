@@ -162,11 +162,11 @@ export class RegistrationError extends Error {
   }
 }
 
-export const register = async (username: string, password: string, company_name: string): Promise<void> => {
+export const register = async (username: string, password: string, company_name: string, invite_code?: string): Promise<void> => {
   const res = await fetch(`${API_BASE}/api/users/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, company_name })
+    body: JSON.stringify({ username, password, company_name, invite_code: invite_code || undefined })
   });
 
   if (!res.ok) {

@@ -121,3 +121,58 @@ def test_register_with_admin_email_bypasses_payment_gate(monkeypatch):
     data = response.json()
     assert data["subscription_status"] == "active"
     assert data["subscription_plan"] == "scale"
+
+
+def test_register_with_valid_invite_code_bypasses_payment_gate(monkeypatch):
+    """A correct shared TEST_INVITE_CODE grants the same Scale-tier bypass
+    as an admin email, without maintaining a per-person allowlist."""
+    from src.api import auth as auth_module
+
+    username = f"tester_{uuid.uuid4().hex[:8]}@example.com"
+    settings = auth_module.get_settings()
+    monkeypatch.setattr(settings, "test_invite_code", "letmein-2026")
+
+    client = TestClient(app)
+    response = client.post(
+        "/users/register",
+        json={"username": username, "password": "test123", "company_name": "Tester Co", "invite_code": "letmein-2026"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["subscription_status"] == "active"
+    assert data["subscription_plan"] == "scale"
+
+
+def test_register_with_wrong_invite_code_is_rejected(monkeypatch):
+    from src.api import auth as auth_module
+
+    username = f"tester_{uuid.uuid4().hex[:8]}@example.com"
+    settings = auth_module.get_settings()
+    monkeypatch.setattr(settings, "test_invite_code", "letmein-2026")
+
+    client = TestClient(app)
+    response = client.post(
+        "/users/register",
+        json={"username": username, "password": "test123", "company_name": "Tester Co", "invite_code": "wrong-code"},
+    )
+
+    assert response.status_code == 402
+
+
+def test_register_with_invite_code_but_none_configured_is_rejected(monkeypatch):
+    """If TEST_INVITE_CODE is unset on the server, no submitted code -- not
+    even an empty string -- should be able to bypass the payment gate."""
+    from src.api import auth as auth_module
+
+    username = f"tester_{uuid.uuid4().hex[:8]}@example.com"
+    settings = auth_module.get_settings()
+    monkeypatch.setattr(settings, "test_invite_code", "")
+
+    client = TestClient(app)
+    response = client.post(
+        "/users/register",
+        json={"username": username, "password": "test123", "company_name": "Tester Co", "invite_code": ""},
+    )
+
+    assert response.status_code == 402

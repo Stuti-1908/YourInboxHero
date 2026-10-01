@@ -6,6 +6,8 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [showInviteCode, setShowInviteCode] = useState(false);
   const [error, setError] = useState('');
   const [needsPlan, setNeedsPlan] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -16,7 +18,7 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
     setError('');
     setNeedsPlan(false);
     try {
-      await register(username, password, companyName);
+      await register(username, password, companyName, inviteCode);
       onRegisterSuccess();
     } catch (err: any) {
       setError(err.message || 'Registration failed');
@@ -78,6 +80,23 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
               minLength={6}
             />
           </div>
+          {showInviteCode ? (
+            <div className="login-group">
+              <label>Invite Code</label>
+              <input
+                type="text"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value)}
+                placeholder="Enter your invite code"
+              />
+            </div>
+          ) : (
+            <div style={{ marginBottom: '16px', fontSize: '0.85rem' }}>
+              <span onClick={() => setShowInviteCode(true)} style={{ color: 'var(--color-text-light)', cursor: 'pointer', textDecoration: 'underline' }}>
+                Have an invite code?
+              </span>
+            </div>
+          )}
           <button type="submit" className="btn-login" disabled={loading}>
             {loading ? 'Creating account...' : 'Sign Up'}
           </button>
