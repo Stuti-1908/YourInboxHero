@@ -154,6 +154,14 @@ export const login = async (username: string, password: string): Promise<string>
   return data.access_token;
 };
 
+export class RegistrationError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export const register = async (username: string, password: string, company_name: string): Promise<void> => {
   const res = await fetch(`${API_BASE}/api/users/register`, {
     method: 'POST',
@@ -163,9 +171,9 @@ export const register = async (username: string, password: string, company_name:
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Registration failed');
+    throw new RegistrationError(errorData.detail || 'Registration failed', res.status);
   }
-  
+
   // Auto login after successful registration
   await login(username, password);
 };

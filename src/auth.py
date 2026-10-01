@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import jwt
@@ -69,3 +69,23 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def require_active_subscription(request: Request, current_user: User = Depends(get_current_user)) -> User:
+    """Gate write actions behind an active subscription.
+
+    A lapsed subscription (past_due after a failed renewal, or cancelled)
+    still allows login and viewing existing data — losing access to your own
+    invoice history on a billing hiccup would be needlessly punishing — but
+    every mutating request (create/update/delete, sending a reminder, etc.)
+    is blocked until the plan is reactivated. GET requests always pass
+    through untouched regardless of subscription state.
+    """
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return current_user
+    if current_user.subscription_status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Your subscription is inactive. Reactivate your plan to continue.",
+        )
+    return current_user

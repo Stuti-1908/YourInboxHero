@@ -8,7 +8,8 @@ from src.models.invoice import Invoice, InvoiceStatus
 from src.models.reminder import ReminderLog, Channel, ReminderStatus
 from src.models.debtor import Debtor
 from src.services.email import send_reminder_email
-from src.auth import get_current_user
+from src.services.usage_limits import has_chase_capacity, record_chase_used
+from src.auth import require_active_subscription
 from src.models.user import User
 
 router = APIRouter()
@@ -18,7 +19,7 @@ router = APIRouter()
 def send_manual_reminder(
     invoice_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_active_subscription)
 ):
     """Manually trigger a reminder for a specific invoice."""
     invoice = (
@@ -33,8 +34,14 @@ def send_manual_reminder(
         raise HTTPException(status_code=400, detail='Only business debtors allowed')
     if invoice.due_date < date.today():
         raise HTTPException(status_code=400, detail='Invoice past due – automation forbidden')
+    if not has_chase_capacity(current_user):
+        raise HTTPException(
+            status_code=402,
+            detail=f"Monthly reminder limit reached ({current_user.chases_used}/{current_user.chases_limit}). Upgrade your plan to send more.",
+        )
     # Send email (mockable)
     send_reminder_email(invoice)
     invoice.last_reminder_sent = datetime.now(timezone.utc)
+    record_chase_used(current_user, db, channel='email', invoice_id=invoice_id)
     db.commit()
     return {'detail': 'Reminder sent'}

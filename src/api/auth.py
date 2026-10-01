@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from src.db import get_db
 from src.models.user import User
 from src.models.pending_subscription import PendingSubscription
+from src.config.settings import get_settings
 from src.auth import (
     verify_password,
     create_access_token,
@@ -66,7 +67,23 @@ async def register_user(
     existing_user = db.query(User).filter(User.username == user.username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already registered")
-    
+
+    settings = get_settings()
+    is_admin = settings.is_admin_email(user.username)
+
+    # A Stripe payment landing for this email (via webhook, before the
+    # customer ever registers) is the only path to a paid plan — see
+    # stripe_payments.py's PendingSubscription handling. Without one (or an
+    # admin bypass), there's nothing to grant an account access to, so we
+    # refuse the signup rather than create a free/inactive account that
+    # looks legitimate but can't actually do anything.
+    pending = db.query(PendingSubscription).filter(PendingSubscription.email == user.username).first()
+    if not pending and not is_admin:
+        raise HTTPException(
+            status_code=402,
+            detail="No active plan found for this email. Choose a plan and complete checkout before creating an account.",
+        )
+
     db_user = User(
         username=user.username,
         hashed_password=get_password_hash(user.password),
@@ -75,10 +92,6 @@ async def register_user(
     db.add(db_user)
     db.flush()  # assign db_user.id before we may reference it below
 
-    # If a Stripe payment already came in for this email (webhook fired
-    # before registration), activate the paid plan immediately instead of
-    # leaving the customer on a free/inactive account they already paid for.
-    pending = db.query(PendingSubscription).filter(PendingSubscription.email == user.username).first()
     if pending:
         db_user.subscription_plan = pending.plan
         db_user.subscription_status = "active"
@@ -88,6 +101,12 @@ async def register_user(
         db_user.chases_limit = pending.chases_limit
         db_user.chases_used = 0
         db.delete(pending)
+    elif is_admin:
+        db_user.subscription_plan = "scale"
+        db_user.subscription_status = "active"
+        db_user.subscription_started_at = datetime.now(timezone.utc)
+        db_user.chases_limit = 750
+        db_user.chases_used = 0
 
     db.commit()
     db.refresh(db_user)

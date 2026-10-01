@@ -67,16 +67,23 @@ def process_due_reminders():
             return
         invoice_ids = [str(inv.id) for inv in invoices]
 
-    from src.services.reminder_worker import handle_invoice_reminder
+    from src.services.reminder_worker import handle_invoice_reminder, ChaseLimitReached
 
     sent = 0
     failed = 0
+    limit_reached = 0
     for invoice_id in invoice_ids:
         try:
             handle_invoice_reminder(invoice_id)
             sent += 1
+        except ChaseLimitReached as exc:
+            limit_reached += 1
+            logging.warning(f'Chase limit reached, skipping invoice {invoice_id}: {exc}')
         except Exception as exc:
             failed += 1
             logging.error(f'Reminder failed for invoice {invoice_id}: {exc}')
 
-    logging.info(f'Processed {len(invoice_ids)} reminder(s): {sent} sent, {failed} failed')
+    logging.info(
+        f'Processed {len(invoice_ids)} reminder(s): {sent} sent, {failed} failed, '
+        f'{limit_reached} skipped (chase limit reached)'
+    )

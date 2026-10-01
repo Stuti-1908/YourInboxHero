@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
-import { register } from '../api/invoice';
+import { register, RegistrationError } from '../api/invoice';
 import './Login.css'; // Reusing Login CSS for the card style
 
-export const Register = ({ onRegisterSuccess, onSwitchToLogin }: { onRegisterSuccess: () => void, onSwitchToLogin: () => void }) => {
+export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: { onRegisterSuccess: () => void, onSwitchToLogin: () => void, onViewPricing?: () => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
+  const [needsPlan, setNeedsPlan] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setNeedsPlan(false);
     try {
       await register(username, password, companyName);
       onRegisterSuccess();
     } catch (err: any) {
       setError(err.message || 'Registration failed');
+      setNeedsPlan(err instanceof RegistrationError && err.status === 402);
     } finally {
       setLoading(false);
     }
@@ -30,7 +33,19 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin }: { onRegisterSuc
           <h1>YourInbox<span>Hero</span></h1>
           <p>Create an account to automate your reminders.</p>
         </div>
-        {error && <div className="login-error">{error}</div>}
+        {error && (
+          <div className="login-error">
+            {error}
+            {needsPlan && onViewPricing && (
+              <>
+                {' '}
+                <span onClick={onViewPricing} style={{ textDecoration: 'underline', cursor: 'pointer', fontWeight: 600 }}>
+                  View plans
+                </span>
+              </>
+            )}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="login-form">
           <div className="login-group">
             <label>Email Address</label>

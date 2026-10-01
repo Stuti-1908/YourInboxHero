@@ -1,5 +1,6 @@
 """Tests for the reminder worker — handle_invoice_reminder."""
 import uuid
+import pytest
 from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
 
@@ -100,3 +101,76 @@ def test_consume_queue_function_exists():
     mod = importlib.import_module('src.functions.consume_queue')
     assert hasattr(mod, 'main')
     assert callable(mod.main)
+
+
+def test_handle_invoice_reminder_increments_chases_used():
+    """A successful send must increment the owning user's chases_used."""
+    from src.models.user import User
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id='test-id').first()
+        before = user.chases_used or 0
+        debtor = _make_debtor(session)
+        inv = _make_invoice(session, debtor)
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    with patch('src.services.reminder_worker.send_reminder_email'):
+        from src.services.reminder_worker import handle_invoice_reminder
+        handle_invoice_reminder(inv_id)
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id='test-id').first()
+        assert user.chases_used == before + 1
+    finally:
+        session.close()
+
+
+def test_handle_invoice_reminder_blocked_at_chase_limit():
+    """Once chases_used reaches chases_limit, no further send is attempted
+    and no reminder_log entry or usage increment occurs -- the attempt
+    simply never happened, so a plan upgrade next cycle picks up cleanly."""
+    from src.models.user import User
+    from src.services.reminder_worker import handle_invoice_reminder, ChaseLimitReached
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id='test-id').first()
+        original_limit, original_used = user.chases_limit, user.chases_used
+        user.chases_limit = 5
+        user.chases_used = 5
+        debtor = _make_debtor(session, name="At Limit Corp")
+        inv = _make_invoice(session, debtor)
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    try:
+        with patch('src.services.reminder_worker.send_reminder_email') as mock_send:
+            with pytest.raises(ChaseLimitReached):
+                handle_invoice_reminder(inv_id)
+            mock_send.assert_not_called()
+
+        session = SessionLocal()
+        try:
+            logs = session.query(ReminderLog).filter(ReminderLog.invoice_id == inv_id).all()
+            assert len(logs) == 0
+            user = session.query(User).filter_by(id='test-id').first()
+            assert user.chases_used == 5
+        finally:
+            session.close()
+    finally:
+        # Restore the shared test-id fixture for other tests in the suite.
+        session = SessionLocal()
+        try:
+            user = session.query(User).filter_by(id='test-id').first()
+            user.chases_limit = original_limit
+            user.chases_used = original_used
+            session.commit()
+        finally:
+            session.close()

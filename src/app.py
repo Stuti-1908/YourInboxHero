@@ -19,7 +19,7 @@ from src.api.invoice_list import router as invoice_list_router
 from src.api.health import router as health_router
 from src.api.auth import router as auth_router
 from src.api.email_template import router as email_template_router
-from src.auth import get_current_user, get_password_hash
+from src.auth import get_current_user, get_password_hash, require_active_subscription
 from src.db import SessionLocal, engine
 from src.models.user import User
 from src.models.base import Base
@@ -209,16 +209,18 @@ from src.api.invoice_create import router as invoice_create_router
 from src.api.analytics import router as analytics_router
 from src.api.invoice_pdf import router as invoice_pdf_router
 
-# Protected routes
-app.include_router(reminder_manual_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(invoice_pause_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(reminder_history_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(invoice_list_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(debtor_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(invoice_create_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(analytics_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(get_current_user)])
-app.include_router(email_template_router, prefix="", dependencies=[Depends(get_current_user)])
+# Protected routes. require_active_subscription allows GET/HEAD/OPTIONS
+# through regardless of subscription state (so a lapsed account can still
+# view its data) but blocks POST/PUT/PATCH/DELETE until the plan is active.
+app.include_router(reminder_manual_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(invoice_pause_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(reminder_history_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(invoice_list_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(debtor_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(invoice_create_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(analytics_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(email_template_router, prefix="", dependencies=[Depends(require_active_subscription)])
 
 from src.api.document_request import router as document_request_router
 from src.api.document_client import router as document_client_router
@@ -248,15 +250,15 @@ from src.api.analytics import router as analytics_router
 from src.api.invoice_pdf import router as invoice_pdf_router
 
 # Protected routes (v1)
-api_v1.include_router(reminder_manual_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(invoice_pause_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(reminder_history_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(invoice_list_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(debtor_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(invoice_create_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(analytics_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(get_current_user)])
-api_v1.include_router(email_template_router, prefix="", dependencies=[Depends(get_current_user)])
+api_v1.include_router(reminder_manual_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(invoice_pause_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(reminder_history_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(invoice_list_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(debtor_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(invoice_create_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(analytics_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(email_template_router, prefix="", dependencies=[Depends(require_active_subscription)])
 
 api_v1.include_router(document_request_router, prefix="", tags=["documents"])
 api_v1.include_router(document_client_router, prefix="", tags=["document_clients"])

@@ -53,3 +53,71 @@ def test_login_failure():
         data={"username": "wrong", "password": "wrong"}
     )
     assert response.status_code == 401
+
+
+def test_register_without_paid_plan_is_rejected():
+    """A signup with no completed Stripe payment and no admin bypass must be
+    refused — there is nothing for the account to have paid access to."""
+    client = TestClient(app)
+    username = f"nopay_{uuid.uuid4().hex[:8]}@example.com"
+
+    response = client.post(
+        "/users/register",
+        json={"username": username, "password": "test123", "company_name": "No Pay Co"},
+    )
+
+    assert response.status_code == 402
+    session = SessionLocal()
+    try:
+        assert session.query(User).filter_by(username=username).first() is None
+    finally:
+        session.close()
+
+
+def test_register_with_pending_subscription_succeeds():
+    """A signup whose email matches a Stripe-confirmed PendingSubscription
+    (webhook landed before registration) is allowed and activates the plan."""
+    from src.models.pending_subscription import PendingSubscription
+
+    client = TestClient(app)
+    username = f"paid_{uuid.uuid4().hex[:8]}@example.com"
+
+    session = SessionLocal()
+    try:
+        session.add(PendingSubscription(
+            email=username, plan="growth", chases_limit=300,
+            stripe_customer_id="cus_test", stripe_subscription_id="sub_test",
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    response = client.post(
+        "/users/register",
+        json={"username": username, "password": "test123", "company_name": "Paid Co"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["subscription_plan"] == "growth"
+    assert data["subscription_status"] == "active"
+
+
+def test_register_with_admin_email_bypasses_payment_gate(monkeypatch):
+    """ADMIN_EMAILS is the deliberate bypass for internal/test accounts."""
+    from src.api import auth as auth_module
+
+    admin_username = f"admin_{uuid.uuid4().hex[:8]}@example.com"
+    settings = auth_module.get_settings()
+    monkeypatch.setattr(settings, "admin_emails", admin_username)
+
+    client = TestClient(app)
+    response = client.post(
+        "/users/register",
+        json={"username": admin_username, "password": "test123", "company_name": "Admin Co"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["subscription_status"] == "active"
+    assert data["subscription_plan"] == "scale"

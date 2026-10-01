@@ -8,7 +8,7 @@ import os
 import shutil
 
 from src.db import get_db
-from src.auth import get_current_user
+from src.auth import get_current_user, require_active_subscription
 from src.models.user import User
 from src.models.document_client import DocumentClient
 from src.models.document_request import DocumentRequest
@@ -76,7 +76,7 @@ def list_document_requests(
 def create_document_request(
     data: DocumentRequestCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_active_subscription)
 ):
     """Create a new document request."""
     client = db.query(DocumentClient).filter(
@@ -121,7 +121,7 @@ def create_document_request(
 def delete_document_request(
     doc_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_active_subscription)
 ):
     doc = db.query(DocumentRequest).filter(
         DocumentRequest.id == doc_id,

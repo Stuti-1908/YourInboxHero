@@ -4,7 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from src.db import get_db
-from src.auth import get_current_user
+from src.auth import get_current_user, require_active_subscription
 from src.models.user import User
 from src.models.document_client import DocumentClient
 
@@ -21,7 +21,7 @@ class DocumentClientResponse(DocumentClientCreate):
 @router.post("", response_model=DocumentClientResponse)
 def create_document_client(
     client_in: DocumentClientCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db)
 ):
     db_client = DocumentClient(

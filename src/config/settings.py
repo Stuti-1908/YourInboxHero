@@ -66,11 +66,19 @@ class Settings(BaseSettings):
     stripe_price_starter: Optional[str] = Field(default=None, description="Stripe Price ID for the Starter plan ($149/mo)")
     stripe_price_growth: Optional[str] = Field(default=None, description="Stripe Price ID for the Growth plan ($299/mo)")
     stripe_price_scale: Optional[str] = Field(default=None, description="Stripe Price ID for the Scale plan ($497/mo)")
-    
+
+    # Comma-separated emails allowed to register without a completed Stripe
+    # payment — for admin/support/test accounts only. Never expose publicly.
+    admin_emails: str = Field(default="", description="Comma-separated emails exempt from the paid-plan registration gate")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+
+    def is_admin_email(self, email: str) -> bool:
+        admins = {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+        return email.strip().lower() in admins
 
 
 @lru_cache

@@ -150,7 +150,7 @@ function App() {
     <Routes>
       <Route path="/" element={<LandingPage onGetStarted={() => navigate('/sign-up')} onSignIn={() => navigate('/sign-in')} />} />
       <Route path="/sign-in" element={<Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => navigate('/sign-up')} />} />
-      <Route path="/sign-up" element={<Register onRegisterSuccess={handleLoginSuccess} onSwitchToLogin={() => navigate('/sign-in')} />} />
+      <Route path="/sign-up" element={<Register onRegisterSuccess={handleLoginSuccess} onSwitchToLogin={() => navigate('/sign-in')} onViewPricing={() => navigate('/#pricing')} />} />
       <Route path="/payment-success" element={<PaymentSuccess onGoToRegister={() => navigate('/sign-up')} onGoToLogin={() => navigate('/sign-in')} />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

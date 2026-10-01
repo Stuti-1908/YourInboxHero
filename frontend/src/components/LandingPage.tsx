@@ -109,6 +109,19 @@ const InvoiceTimeline = () => {
 export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => void, onSignIn: () => void }) => {
   const [checkoutPlan, setCheckoutPlan] = useState<{ id: string; name: string } | null>(null);
 
+  // Arriving via a link like /#pricing (e.g. "View plans" from a blocked
+  // sign-up) should land the visitor on that section, not the top of the
+  // page — React Router doesn't auto-scroll to a hash on navigation.
+  useEffect(() => {
+    if (window.location.hash) {
+      const id = window.location.hash.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const hiddenElements = document.querySelectorAll('.reveal');
 
@@ -295,7 +308,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
         </div>
       </section>
 
-      <section className="pricing-section reveal">
+      <section id="pricing" className="pricing-section reveal">
         <div className="section-heading">
           <h2>Choose your plan</h2>
           <p>Priced by how many reminders you send a month, not by seat.</p>

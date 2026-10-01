@@ -101,27 +101,35 @@ def run_escalation_sweep(db: Session):
 def run_sms_reminders(db: Session):
     """Send SMS reminders for invoices in the SMS escalation tier."""
     from src.services.ghl_service import send_sms
-    
+    from src.services.usage_limits import has_chase_capacity, record_chase_used
+
     sms_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
         Invoice.escalation_tier == "sms"
     ).all()
-    
+
     today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time())
-    
+
     for inv in sms_invoices:
         # Skip if already sent today
         if inv.last_reminder_sent and inv.last_reminder_sent >= today_start:
             continue
-        
+
         debtor = inv.debtor
         if not debtor.phone:
             logger.warning("sms_skipped_no_phone",
                           invoice_id=str(inv.id),
                           debtor_name=debtor.name)
             continue
-        
+
         user = debtor.user
+        if not has_chase_capacity(user):
+            logger.warning("sms_skipped_chase_limit_reached",
+                          invoice_id=str(inv.id),
+                          user_id=user.id,
+                          chases_used=user.chases_used,
+                          chases_limit=user.chases_limit)
+            continue
         company_name = user.company_name or "YourInboxHero"
         
         # Build SMS message from template or default
@@ -157,54 +165,64 @@ def run_sms_reminders(db: Session):
         if success:
             inv.sms_sent_count = (inv.sms_sent_count or 0) + 1
             inv.last_reminder_sent = datetime.now(timezone.utc)
+            record_chase_used(user, db, channel='sms', invoice_id=str(inv.id))
             logger.info("sms_sent",
                        invoice_id=str(inv.id),
                        invoice_number=inv.invoice_number,
                        debtor_phone=debtor.phone)
-    
+
     db.commit()
 
 
 def run_voice_calls(db: Session):
     """Trigger voice calls for invoices in the voice escalation tier."""
     from src.services.ghl_service import trigger_voice_call
-    
+    from src.services.usage_limits import has_chase_capacity, record_chase_used
+
     voice_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
         Invoice.escalation_tier == "voice"
     ).all()
-    
+
     for inv in voice_invoices:
         # Only call once every 3 days max
         if inv.last_reminder_sent and (datetime.now(timezone.utc) - inv.last_reminder_sent).days < 3:
             continue
-        
+
         debtor = inv.debtor
         if not debtor.phone:
             logger.warning("voice_call_skipped_no_phone",
                           invoice_id=str(inv.id),
                           debtor_name=debtor.name)
             continue
-        
+
         user = debtor.user
+        if not has_chase_capacity(user):
+            logger.warning("voice_call_skipped_chase_limit_reached",
+                          invoice_id=str(inv.id),
+                          user_id=user.id,
+                          chases_used=user.chases_used,
+                          chases_limit=user.chases_limit)
+            continue
         company_name = user.company_name or "YourInboxHero"
         message = f"This is an automated call from {company_name}. Invoice number {inv.invoice_number} for ${inv.amount:.2f} is overdue. Please make your payment immediately."
-        
+
         success = trigger_voice_call(
             phone=debtor.phone,
             message=message,
             contact_name=debtor.name,
             contact_email=debtor.email
         )
-        
+
         if success:
             inv.voice_call_count = (inv.voice_call_count or 0) + 1
             inv.last_reminder_sent = datetime.now(timezone.utc)
+            record_chase_used(user, db, channel='voice', invoice_id=str(inv.id))
             logger.info("voice_call_triggered",
                        invoice_id=str(inv.id),
                        invoice_number=inv.invoice_number,
                        debtor_phone=debtor.phone)
-    
+
     db.commit()
 
 
