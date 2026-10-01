@@ -7,6 +7,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import base64
 from reportlab.platypus import Image
 
+from src.services.plan_features import plan_has_feature
+
 def generate_invoice_pdf(invoice, debtor, user):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -15,8 +17,12 @@ def generate_invoice_pdf(invoice, debtor, user):
 
     # Header
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=24, spaceAfter=20, textColor=colors.HexColor('#2c3e50'))
-    
-    if user.logo_base64:
+
+    # Custom branding (logo) is a Growth+ feature. A Starter user can still
+    # save a logo in Settings — it's just not applied until they upgrade,
+    # so nothing needs re-entering once they do.
+    has_branding = plan_has_feature(user.subscription_plan, "custom_branding")
+    if user.logo_base64 and has_branding:
         try:
             # Handle data URL format (e.g. data:image/png;base64,...)
             header, encoded = user.logo_base64.split(",", 1) if "," in user.logo_base64 else ("", user.logo_base64)

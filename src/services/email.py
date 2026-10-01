@@ -12,6 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from src.config.settings import get_settings
 from src.db import SessionLocal
 from src.models.email_template import EmailTemplate
+from src.services.plan_features import plan_has_feature
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -132,18 +133,29 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
         correlation_id=correlation_id,
     )
     
-    # Get custom template if available
-    db = SessionLocal()
-    try:
-        custom_template = db.query(EmailTemplate).filter(
-            EmailTemplate.user_id == user.id,
-            EmailTemplate.template_type == invoice.status.value
-        ).first()
-    finally:
-        db.close()
-    
+    # Custom templates and custom SMTP are both Growth+ features. A
+    # downgraded or never-upgraded Starter user may still have saved
+    # values for either (saving isn't blocked — see email_template.py and
+    # auth.py's /users/me — only applying them is), so re-check the plan
+    # at send time rather than trusting that the data being present means
+    # it's allowed to be used.
+    has_custom_templates = plan_has_feature(user.subscription_plan, "custom_templates")
+    has_custom_smtp = plan_has_feature(user.subscription_plan, "custom_smtp")
+
+    # Get custom template if available and entitled
+    custom_template = None
+    if has_custom_templates:
+        db = SessionLocal()
+        try:
+            custom_template = db.query(EmailTemplate).filter(
+                EmailTemplate.user_id == user.id,
+                EmailTemplate.template_type == invoice.status.value
+            ).first()
+        finally:
+            db.close()
+
     replacements = _build_replacements(invoice, company_name)
-    
+
     if custom_template:
         subject = _apply_replacements(custom_template.subject, replacements)
         body = _apply_replacements(custom_template.body, replacements)
@@ -151,9 +163,9 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
     else:
         subject = f'Reminder: Invoice {invoice.invoice_number} from {company_name} is due'
         html_body = render_template(invoice)
-    
-    # Try custom SMTP first
-    if user.smtp_host and user.smtp_port and user.smtp_username and user.smtp_password:
+
+    # Try custom SMTP first, if entitled
+    if has_custom_smtp and user.smtp_host and user.smtp_port and user.smtp_username and user.smtp_password:
         try:
             result = _send_via_smtp(
                 host=user.smtp_host,

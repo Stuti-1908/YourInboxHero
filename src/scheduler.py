@@ -102,6 +102,7 @@ def run_sms_reminders(db: Session):
     """Send SMS reminders for invoices in the SMS escalation tier."""
     from src.services.ghl_service import send_sms
     from src.services.usage_limits import has_chase_capacity, record_chase_used
+    from src.services.plan_features import plan_has_feature
 
     sms_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
@@ -131,13 +132,15 @@ def run_sms_reminders(db: Session):
                           chases_limit=user.chases_limit)
             continue
         company_name = user.company_name or "YourInboxHero"
-        
-        # Build SMS message from template or default
-        sms_template = db.query(EmailTemplate).filter(
-            EmailTemplate.user_id == user.id,
-            EmailTemplate.template_type == "overdue"
-        ).first()
-        
+
+        # Build SMS message from template (Growth+ only) or default
+        sms_template = None
+        if plan_has_feature(user.subscription_plan, "custom_templates"):
+            sms_template = db.query(EmailTemplate).filter(
+                EmailTemplate.user_id == user.id,
+                EmailTemplate.template_type == "overdue"
+            ).first()
+
         if sms_template:
             message = sms_template.body
         else:
@@ -175,9 +178,16 @@ def run_sms_reminders(db: Session):
 
 
 def run_voice_calls(db: Session):
-    """Trigger voice calls for invoices in the voice escalation tier."""
+    """Trigger voice calls for invoices in the voice escalation tier.
+
+    Voice is a Growth+/Scale feature per the pricing page — Starter only
+    promises email + SMS. A Starter invoice that somehow reaches the voice
+    tier (e.g. after a downgrade) is left in place rather than erroring;
+    it just never gets called while the plan doesn't cover it.
+    """
     from src.services.ghl_service import trigger_voice_call
     from src.services.usage_limits import has_chase_capacity, record_chase_used
+    from src.services.plan_features import plan_has_feature
 
     voice_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
@@ -197,6 +207,12 @@ def run_voice_calls(db: Session):
             continue
 
         user = debtor.user
+        if not plan_has_feature(user.subscription_plan, "voice_escalation"):
+            logger.info("voice_call_skipped_plan_tier",
+                       invoice_id=str(inv.id),
+                       user_id=user.id,
+                       plan=user.subscription_plan)
+            continue
         if not has_chase_capacity(user):
             logger.warning("voice_call_skipped_chase_limit_reached",
                           invoice_id=str(inv.id),

@@ -4,14 +4,15 @@ from src.services.email import send_reminder_email
 from datetime import date
 
 
-def _make_dummy_invoice():
+def _make_dummy_invoice(plan='scale', smtp_configured=False):
     class DummyUser:
         id = "test-id"
         company_name = 'Test Company'
-        smtp_host = None
-        smtp_port = None
-        smtp_username = None
-        smtp_password = None
+        subscription_plan = plan
+        smtp_host = 'smtp.example.com' if smtp_configured else None
+        smtp_port = '587' if smtp_configured else None
+        smtp_username = 'user@example.com' if smtp_configured else None
+        smtp_password = 'hunter2' if smtp_configured else None
         smtp_from_email = None
 
     class DummyDebtor:
@@ -69,3 +70,60 @@ def test_send_email_raises_when_resend_fails(monkeypatch):
 
         with pytest.raises(Exception):
             send_reminder_email(_make_dummy_invoice())
+
+
+def test_starter_plan_ignores_saved_smtp_and_uses_resend(monkeypatch):
+    """A Starter user may have SMTP credentials saved (saving isn't
+    blocked), but custom_smtp is Growth+ -- sending must still go through
+    Resend, never attempt the user's own SMTP server."""
+    monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
+
+    with patch('src.services.email.EmailTemplate') as mock_template, \
+         patch('src.services.email.SessionLocal') as mock_session_local, \
+         patch('src.services.email._send_via_smtp') as mock_smtp, \
+         patch('src.services.email.requests.post') as mock_post:
+        mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = None
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "resend-msg-id"}
+        mock_post.return_value = mock_response
+
+        result = send_reminder_email(_make_dummy_invoice(plan='starter', smtp_configured=True))
+
+        mock_smtp.assert_not_called()
+        mock_post.assert_called_once()
+        assert result["method"] == "resend"
+
+
+def test_growth_plan_uses_saved_smtp_when_configured(monkeypatch):
+    with patch('src.services.email.EmailTemplate') as mock_template, \
+         patch('src.services.email.SessionLocal') as mock_session_local, \
+         patch('src.services.email._send_via_smtp') as mock_smtp, \
+         patch('src.services.email.requests.post') as mock_post:
+        mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = None
+        mock_smtp.return_value = {"status": "success", "method": "smtp"}
+
+        result = send_reminder_email(_make_dummy_invoice(plan='growth', smtp_configured=True))
+
+        mock_smtp.assert_called_once()
+        mock_post.assert_not_called()
+        assert result["method"] == "smtp"
+
+
+def test_starter_plan_ignores_saved_custom_template(monkeypatch):
+    """custom_templates is Growth+ -- a Starter user's saved template (if
+    any somehow exists, e.g. after a downgrade) must not be looked up or
+    used; the default built-in template always applies instead."""
+    monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
+
+    with patch('src.services.email.SessionLocal') as mock_session_local, \
+         patch('src.services.email.requests.post') as mock_post:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "resend-msg-id"}
+        mock_post.return_value = mock_response
+
+        send_reminder_email(_make_dummy_invoice(plan='starter'))
+
+        # The DB should never even be queried for a template on Starter.
+        mock_session_local.assert_not_called()
