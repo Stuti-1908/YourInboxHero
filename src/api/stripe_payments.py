@@ -159,15 +159,26 @@ async def stripe_webhook(request: Request):
         elif event_type == "invoice.payment_succeeded":
             # Covers monthly renewals, and recovery from a prior past_due
             # state once a retried payment succeeds. The very first payment
-            # is handled by checkout.session.completed above; this event also
-            # fires then, but the user lookup is a no-op (already active) so
-            # it's safe to double-handle.
+            # is handled by checkout.session.completed above; this event
+            # also fires then (Stripe's delivery order between the two
+            # isn't guaranteed), so billing_reason distinguishes a genuine
+            # renewal (subscription_cycle) from the first payment
+            # (subscription_create) -- only a renewal resets usage, so we
+            # never risk wiping out chases the customer sent in the gap
+            # between the two events for their very first payment.
             invoice = event["data"]["object"]
+            billing_reason = invoice.get("billing_reason")
             user = db.query(User).filter(User.stripe_customer_id == invoice.get("customer")).first()
-            if user and user.subscription_status != "active":
-                user.subscription_status = "active"
+            if user:
+                if user.subscription_status != "active":
+                    user.subscription_status = "active"
+                    logger.info("subscription_reactivated_after_payment", user_id=user.id)
+                if billing_reason == "subscription_cycle":
+                    user.chases_used = 0
+                    user.usage_warning_80_sent = False
+                    user.usage_limit_reached_sent = False
+                    logger.info("usage_reset_on_renewal", user_id=user.id)
                 db.commit()
-                logger.info("subscription_reactivated_after_payment", user_id=user.id)
             return {"msg": "Payment success recorded"}
 
         return {"msg": f"Event received: {event_type}"}

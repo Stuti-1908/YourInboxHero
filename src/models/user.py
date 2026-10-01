@@ -29,3 +29,10 @@ class User(Base):
     stripe_subscription_id = Column(String, nullable=True)
     chases_limit = Column(Integer, nullable=False, default=0)  # 100, 300, 750
     chases_used = Column(Integer, nullable=False, default=0)
+    # Tracks whether each usage-limit warning email has already gone out
+    # this billing cycle, so a customer sitting above a threshold doesn't
+    # get the same warning on every single send. Both reset to False
+    # whenever chases_used resets (registration, and monthly renewal via
+    # the invoice.payment_succeeded webhook).
+    usage_warning_80_sent = Column(Boolean, nullable=False, default=False)
+    usage_limit_reached_sent = Column(Boolean, nullable=False, default=False)

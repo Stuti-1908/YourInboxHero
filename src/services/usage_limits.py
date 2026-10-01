@@ -51,3 +51,21 @@ def record_chase_used(user: User, db: Session, channel: str, invoice_id: str) ->
     logger.info(
         f'chase_recorded user_id={user.id} channel={channel} invoice_id={invoice_id}'
     )
+
+    # Re-fetch fresh from the DB rather than trusting `user` (which may be
+    # a detached/transient object the refresh above couldn't update) --
+    # the warning-threshold check needs the real post-increment count, not
+    # a possibly-stale in-memory value, or it could miss the exact moment
+    # a threshold is crossed.
+    #
+    # This is deliberately isolated with its own try/except: the chase has
+    # already been sent and counted by this point, so nothing here may ever
+    # cause record_chase_used to raise. A caller that saw an exception here
+    # could wrongly mark an already-successful send as failed.
+    try:
+        from src.services.account_notifications import maybe_send_usage_warnings
+        fresh_user = db.query(User).filter(User.id == user.id).first()
+        if fresh_user:
+            maybe_send_usage_warnings(fresh_user, db)
+    except Exception as exc:
+        logger.error(f'usage_warning_check_failed user_id={user.id} error={exc}')

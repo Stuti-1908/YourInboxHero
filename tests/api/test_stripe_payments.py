@@ -189,3 +189,82 @@ def test_webhook_reactivates_subscription_on_payment_success_after_past_due(monk
         assert user.subscription_status == "active"
     finally:
         session.close()
+
+
+def test_webhook_resets_usage_on_genuine_renewal(monkeypatch):
+    """billing_reason=subscription_cycle identifies a real monthly renewal
+    -- chases_used and both warning flags must reset so the customer isn't
+    permanently capped after their first billing cycle."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_customer_id = "cus_renewal1"
+        user.subscription_status = "active"
+        user.chases_limit = 300
+        user.chases_used = 300
+        user.usage_warning_80_sent = True
+        user.usage_limit_reached_sent = True
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_renewal1",
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"customer": "cus_renewal1", "billing_reason": "subscription_cycle"}},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+
+    assert resp.status_code == 200
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.chases_used == 0
+        assert user.usage_warning_80_sent is False
+        assert user.usage_limit_reached_sent is False
+    finally:
+        session.close()
+
+
+def test_webhook_does_not_reset_usage_on_first_payment():
+    """billing_reason=subscription_create (the very first payment) must
+    NOT reset usage -- checkout.session.completed already set it to 0, and
+    resetting again here could wipe out chases sent in the gap between the
+    two webhook events for a brand-new customer."""
+    from src.api import stripe_payments
+    stripe_payments.settings.stripe_webhook_secret = "whsec_fake"
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_customer_id = "cus_firstpay1"
+        user.subscription_status = "active"
+        user.chases_limit = 300
+        user.chases_used = 5  # a chase already sent in the gap between events
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_firstpay1",
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"customer": "cus_firstpay1", "billing_reason": "subscription_create"}},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+
+    assert resp.status_code == 200
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.chases_used == 5  # unchanged, not wiped back to 0
+    finally:
+        session.close()
