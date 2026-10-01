@@ -52,7 +52,7 @@ const getAuthHeaders = () => {
 };
 
 export const fetchInvoices = async (): Promise<Invoice[]> => {
-  const res = await fetch(`${API_BASE}/api/invoice`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/invoice`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -65,7 +65,7 @@ export const fetchInvoices = async (): Promise<Invoice[]> => {
 };
 
 export const fetchAnalytics = async (): Promise<AnalyticsData> => {
-  const res = await fetch(`${API_BASE}/api/analytics`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/analytics`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -76,7 +76,7 @@ export const fetchAnalytics = async (): Promise<AnalyticsData> => {
 
 
 export const pauseInvoice = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/api/invoice/${id}/pause`, { 
+  const res = await fetch(`${API_BASE}/invoice/${id}/pause`, { 
     method: 'POST',
     headers: getAuthHeaders()
   });
@@ -84,7 +84,7 @@ export const pauseInvoice = async (id: string): Promise<void> => {
 };
 
 export const fetchDebtors = async (): Promise<Debtor[]> => {
-  const res = await fetch(`${API_BASE}/api/debtor`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/debtor`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -96,7 +96,7 @@ export const fetchDebtors = async (): Promise<Debtor[]> => {
 };
 
 export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
-  const res = await fetch(`${API_BASE}/api/debtor`, {
+  const res = await fetch(`${API_BASE}/debtor`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -113,7 +113,7 @@ export const createDebtor = async (data: { name: string; email: string; phone?: 
 };
 
 export const deleteDebtor = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/api/debtor/${id}`, {
+  const res = await fetch(`${API_BASE}/debtor/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
@@ -125,7 +125,7 @@ export const deleteDebtor = async (id: string): Promise<void> => {
 };
 
 export const createInvoice = async (data: { debtor_id: string; invoice_number: string; amount: number; due_date: string; description?: string; payment_link?: string; payment_instructions?: string }): Promise<Invoice> => {
-  const res = await fetch(`${API_BASE}/api/invoice`, {
+  const res = await fetch(`${API_BASE}/invoice`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -142,7 +142,7 @@ export const login = async (username: string, password: string): Promise<string>
   formData.append('username', username);
   formData.append('password', password);
 
-  const res = await fetch(`${API_BASE}/api/token`, {
+  const res = await fetch(`${API_BASE}/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formData.toString()
@@ -163,7 +163,7 @@ export class RegistrationError extends Error {
 }
 
 export const register = async (username: string, password: string, company_name: string, invite_code?: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/api/users/register`, {
+  const res = await fetch(`${API_BASE}/users/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, company_name, invite_code: invite_code || undefined })
@@ -197,7 +197,7 @@ export const logout = () => {
 };
 
 export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/api/invoice/${invoiceId}/pdf`, {
+  const res = await fetch(`${API_BASE}/invoice/${invoiceId}/pdf`, {
     headers: getAuthHeaders()
   });
   if (res.status === 401) {
@@ -218,7 +218,7 @@ export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {
 };
 
 export const fetchEmailTemplates = async (): Promise<EmailTemplate[]> => {
-  const res = await fetch(`${API_BASE}/api/email-template`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/email-template`, { headers: getAuthHeaders() });
   if (res.status === 401) {
     localStorage.removeItem('token');
     window.location.reload();
@@ -228,7 +228,7 @@ export const fetchEmailTemplates = async (): Promise<EmailTemplate[]> => {
 };
 
 export const saveEmailTemplate = async (data: { template_type: string; subject: string; body: string }): Promise<EmailTemplate> => {
-  const res = await fetch(`${API_BASE}/api/email-template`, {
+  const res = await fetch(`${API_BASE}/email-template`, {
     method: 'PUT',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -248,7 +248,7 @@ export const getMe = async (): Promise<any> => {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch(`${API_BASE}/api/users/me`, {
+  const res = await fetch(`${API_BASE}/users/me`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
 
@@ -264,7 +264,7 @@ export const updateSettings = async (settings: any): Promise<void> => {
   const token = localStorage.getItem('token');
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch(`${API_BASE}/api/users/me`, {
+  const res = await fetch(`${API_BASE}/users/me`, {
     method: 'PUT',
     headers: { 
       'Authorization': `Bearer ${token}`,
@@ -304,14 +304,14 @@ export interface DocumentRequest {
 }
 
 export const getDocumentClients = async (): Promise<DocumentClient[]> => {
-  const res = await fetch(`${API_BASE}/api/document-clients`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/document-clients`, { headers: getAuthHeaders() });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to fetch document clients');
   return await res.json();
 };
 
 export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Promise<DocumentClient> => {
-  const res = await fetch(`${API_BASE}/api/document-clients`, {
+  const res = await fetch(`${API_BASE}/document-clients`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -324,14 +324,14 @@ export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Pr
 };
 
 export const fetchDocumentRequests = async (): Promise<DocumentRequest[]> => {
-  const res = await fetch(`${API_BASE}/api/documents`, { headers: getAuthHeaders() });
+  const res = await fetch(`${API_BASE}/documents`, { headers: getAuthHeaders() });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to fetch document requests');
   return await res.json();
 };
 
 export const createDocumentRequest = async (data: { client_id: string; title: string; description?: string; due_date: string }): Promise<DocumentRequest> => {
-  const res = await fetch(`${API_BASE}/api/documents`, {
+  const res = await fetch(`${API_BASE}/documents`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
@@ -344,7 +344,7 @@ export const createDocumentRequest = async (data: { client_id: string; title: st
 };
 
 export const deleteDocumentRequest = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/api/documents/${id}`, {
+  const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders()
   });
