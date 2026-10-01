@@ -22,7 +22,11 @@ def upgrade() -> None:
     """Upgrade schema."""
     op.add_column('users', sa.Column('stripe_customer_id', sa.String(), nullable=True))
     op.add_column('users', sa.Column('stripe_subscription_id', sa.String(), nullable=True))
-    op.drop_column('users', 'square_payment_id')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = {col['name'] for col in inspector.get_columns('users')}
+    if 'square_payment_id' in existing_columns:
+        op.drop_column('users', 'square_payment_id')
 
 
 def downgrade() -> None:
