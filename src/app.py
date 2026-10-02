@@ -204,6 +204,7 @@ app.include_router(webhooks_router, prefix="/api/webhooks")
 
 from src.api.debtor import router as debtor_router
 from src.api.invoice_create import router as invoice_create_router
+from src.api.invoice_import import router as invoice_import_router
 from src.api.analytics import router as analytics_router
 from src.api.invoice_pdf import router as invoice_pdf_router
 
@@ -216,6 +217,7 @@ app.include_router(reminder_history_router, prefix="", dependencies=[Depends(req
 app.include_router(invoice_list_router, prefix="", dependencies=[Depends(require_active_subscription)])
 app.include_router(debtor_router, prefix="", dependencies=[Depends(require_active_subscription)])
 app.include_router(invoice_create_router, prefix="", dependencies=[Depends(require_active_subscription)])
+app.include_router(invoice_import_router, prefix="", dependencies=[Depends(require_active_subscription)])
 app.include_router(analytics_router, prefix="", dependencies=[Depends(require_active_subscription)])
 app.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(require_active_subscription)])
 app.include_router(email_template_router, prefix="", dependencies=[Depends(require_active_subscription)])
@@ -254,6 +256,7 @@ api_v1.include_router(reminder_history_router, prefix="", dependencies=[Depends(
 api_v1.include_router(invoice_list_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(debtor_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(invoice_create_router, prefix="", dependencies=[Depends(require_active_subscription)])
+api_v1.include_router(invoice_import_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(analytics_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(email_template_router, prefix="", dependencies=[Depends(require_active_subscription)])

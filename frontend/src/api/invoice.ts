@@ -368,3 +368,74 @@ export const deleteDocumentRequest = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Failed to delete document request');
 };
 
+// ============ CSV Bulk Import ============
+
+export interface ImportRow {
+  row_number: number;
+  debtor_name: string;
+  debtor_email: string;
+  debtor_phone?: string | null;
+  invoice_number: string;
+  amount: number;
+  due_date: string;
+  description?: string | null;
+  debtor_exists: boolean;
+}
+
+export interface ImportRowError {
+  row_number: number;
+  error: string;
+}
+
+export interface ImportPreviewResponse {
+  valid_rows: ImportRow[];
+  errors: ImportRowError[];
+  total_rows: number;
+}
+
+export interface ImportCommitResult {
+  row_number: number;
+  status: 'created' | 'skipped' | 'error';
+  detail: string;
+  invoice_id?: string | null;
+}
+
+export interface ImportCommitResponse {
+  results: ImportCommitResult[];
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+}
+
+export const previewInvoiceImport = async (file: File): Promise<ImportPreviewResponse> => {
+  const token = localStorage.getItem('token');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${API_BASE}/invoice/import/preview`, {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to parse CSV file');
+  }
+  return await res.json();
+};
+
+export const commitInvoiceImport = async (rows: ImportRow[]): Promise<ImportCommitResponse> => {
+  const res = await fetch(`${API_BASE}/invoice/import/commit`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ rows }),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to import rows');
+  }
+  return await res.json();
+};
+

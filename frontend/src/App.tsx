@@ -8,6 +8,7 @@ import { Settings } from './components/Settings';
 import { LandingPage } from './components/LandingPage';
 import { CreateDebtor } from './components/CreateDebtor';
 import { CreateInvoice } from './components/CreateInvoice';
+import { ImportInvoices } from './components/ImportInvoices';
 import Templates from './components/EmailTemplates';
 import { EmailProviders } from './components/EmailProviders';
 import { DocumentTable } from './components/DocumentTable';
@@ -86,6 +87,7 @@ const DashboardLayout = () => {
               <button className={`nav-tab ${isMoneyTab('debtors') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors')}>Debtors</button>
               <button className={`nav-tab ${isMoneyTab('debtors/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors/new')}>Add Debtor</button>
               <button className={`nav-tab ${isMoneyTab('invoices/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices/new')}>Add Invoice</button>
+              <button className={`nav-tab ${isMoneyTab('invoices/import') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices/import')}>Import CSV</button>
               <button className={`nav-tab ${isMoneyTab('templates') ? 'active' : ''}`} onClick={() => navigate('/dashboard/templates')}>Templates</button>
               <button className={`nav-tab ${isMoneyTab('email-setup') ? 'active' : ''}`} onClick={() => navigate('/dashboard/email-setup')}>Email Setup</button>
               <button className={`nav-tab ${isMoneyTab('settings') ? 'active' : ''}`} onClick={() => navigate('/dashboard/settings')}>Settings</button>
@@ -111,6 +113,7 @@ const DashboardLayout = () => {
             <Route path="/dashboard/debtors" element={<DebtorTable />} />
             <Route path="/dashboard/debtors/new" element={<CreateDebtor onSuccess={() => navigate('/dashboard/debtors')} />} />
             <Route path="/dashboard/invoices/new" element={<CreateInvoice onSuccess={() => navigate('/dashboard/invoices')} />} />
+            <Route path="/dashboard/invoices/import" element={<ImportInvoices onSuccess={() => navigate('/dashboard/invoices')} />} />
             <Route path="/dashboard/templates" element={<Templates />} />
             <Route path="/dashboard/email-setup" element={<EmailProviders />} />
             <Route path="/dashboard/settings" element={<Settings />} />
