@@ -8,9 +8,11 @@ from fastapi import FastAPI, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
+
+from src.rate_limit import limiter
 
 from src.api.reminder_manual import router as reminder_manual_router
 from src.api.invoice_pause import router as invoice_pause_router
@@ -20,7 +22,7 @@ from src.api.health import router as health_router
 from src.api.auth import router as auth_router
 from src.api.email_template import router as email_template_router
 from src.auth import get_current_user, get_password_hash, require_active_subscription
-from src.db import SessionLocal, engine
+from src.db import SessionLocal, engine, get_db
 from src.models.user import User
 from src.models.base import Base
 from src.config.settings import get_settings, validate_production_settings
@@ -39,8 +41,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("yourinboxhero")
 
-# Rate limiter - uses client IP by default
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 
 class CorrelationIdMiddleware:
@@ -127,6 +127,7 @@ app = FastAPI(
 # Rate limiter state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Correlation ID middleware (must be first)
 app.add_middleware(CorrelationIdMiddleware)
@@ -163,7 +164,7 @@ async def liveness_probe():
 
 
 @app.get("/health/ready", tags=["health"])
-async def readiness_probe(request: Request, db: Session = Depends(lambda: next(get_db()))):
+async def readiness_probe(request: Request, db: Session = Depends(get_db)):
     """Readiness probe - checks DB and critical dependencies."""
     correlation_id = get_correlation_id(request)
     
@@ -189,9 +190,6 @@ async def readiness_probe(request: Request, db: Session = Depends(lambda: next(g
         "correlation_id": correlation_id
     }
 
-
-# Re-export get_db for backward compatibility
-from src.db import get_db
 
 # ============================================================
 # LEGACY ROUTES (non-versioned) - for backward compatibility

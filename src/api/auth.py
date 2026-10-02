@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from slowapi.util import get_remote_address
 
 from datetime import datetime, timezone
 
@@ -20,6 +19,7 @@ from src.auth import (
     oauth2_scheme,
     get_password_hash
 )
+from src.rate_limit import limiter
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -29,12 +29,12 @@ class Token(BaseModel):
     token_type: str
 
 @router.post("/token", response_model=Token)
+@limiter.limit("5/minute")
 async def login_for_access_token(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-    # Rate limiting handled by app-level limiter
     user = db.query(User).filter(User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -61,6 +61,7 @@ class UserCreate(BaseModel):
     invite_code: Optional[str] = None
 
 @router.post("/users/register", status_code=status.HTTP_201_CREATED)
+@limiter.limit("3/minute")
 async def register_user(
     request: Request,
     user: UserCreate,

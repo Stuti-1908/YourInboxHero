@@ -1,5 +1,4 @@
 """Authentication utilities with timezone-aware datetimes."""
-import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from passlib.context import CryptContext
@@ -10,15 +9,12 @@ import jwt
 
 from src.db import get_db
 from src.models.user import User
+from src.config.settings import get_settings
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    import sys
-    if os.getenv("ENVIRONMENT") == "production" or os.getenv("AZURE_HTTP_SERVER") or os.getenv("WEBSITE_INSTANCE_ID"):
-        # Running in Azure/production - fail fast
-        raise RuntimeError("SECRET_KEY environment variable is required in production")
-    # Local dev fallback
-    SECRET_KEY = "dev-secret-key-change-in-production"
+# Single source of truth for the signing secret — validate_production_settings()
+# (called at app startup) already refuses to boot in production/staging if this
+# is missing or still the dev default, so there is no separate fallback here.
+SECRET_KEY = get_settings().secret_key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

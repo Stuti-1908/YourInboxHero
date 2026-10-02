@@ -49,9 +49,12 @@ class Settings(BaseSettings):
         description="Allowed CORS origins"
     )
     
-    # Database pool settings
-    db_pool_size: int = Field(default=10, description="SQLAlchemy pool size")
-    db_max_overflow: int = Field(default=20, description="SQLAlchemy max overflow")
+    # Database pool settings. Kept modest by default because Supabase's free-
+    # tier session pooler caps concurrent clients around ~15 — a single
+    # Hetzner instance with the old defaults (10 + 20 overflow = 30 max)
+    # could exceed that under load and start seeing "max clients reached".
+    db_pool_size: int = Field(default=5, description="SQLAlchemy pool size")
+    db_max_overflow: int = Field(default=5, description="SQLAlchemy max overflow")
     db_pool_recycle: int = Field(default=3600, description="Connection recycle seconds")
     db_pool_pre_ping: bool = Field(default=True, description="Validate connections before use")
     

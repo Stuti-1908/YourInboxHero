@@ -18,6 +18,7 @@ from src.config.settings import get_settings
 from src.db import SessionLocal
 from src.models.user import User
 from src.models.pending_subscription import PendingSubscription
+from src.rate_limit import limiter
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -45,7 +46,8 @@ class CreateCheckoutSessionRequest(BaseModel):
 
 
 @router.post("/create-checkout-session")
-def create_checkout_session(data: CreateCheckoutSessionRequest):
+@limiter.limit("5/minute")
+def create_checkout_session(request: Request, data: CreateCheckoutSessionRequest):
     """Create a Stripe Checkout Session for the given plan and redirect the
     user there. The user's email is attached as client_reference_id / the
     Checkout customer email so the webhook can match it back to a User row.
