@@ -23,6 +23,25 @@ settings = get_settings()
 
 scheduler = BackgroundScheduler()
 
+
+def _as_aware_utc(dt):
+    """Treat a naive datetime as UTC rather than crashing on comparison.
+
+    The DB columns are declared TIMESTAMP(timezone=True), but not every
+    driver (notably SQLite, used in tests/local dev) actually returns an
+    aware datetime back on read even when one was stored — and a bare
+    TIMESTAMP column from before the e1a2b3c4d5f6 migration would also come
+    back naive on an unmigrated database. Every datetime written into these
+    columns by this app is already UTC (see datetime.now(timezone.utc)
+    throughout), so attaching the UTC tzinfo to a naive value is always
+    correct, never a guess.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
 # Escalation timing (days) - from settings
 EMAIL_TO_SMS_DAYS = settings.email_to_sms_days
 SMS_TO_VOICE_DAYS = settings.sms_to_voice_days
@@ -73,7 +92,7 @@ def run_escalation_sweep(db: Session):
             db.commit()
             continue
         
-        days_in_tier = (now - inv.escalation_started_at).days
+        days_in_tier = (now - _as_aware_utc(inv.escalation_started_at)).days
         
         # TIER 1 → TIER 2: Email to SMS
         if inv.escalation_tier == "email" and days_in_tier >= EMAIL_TO_SMS_DAYS:
@@ -109,11 +128,11 @@ def run_sms_reminders(db: Session):
         Invoice.escalation_tier == "sms"
     ).all()
 
-    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time())
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc)
 
     for inv in sms_invoices:
         # Skip if already sent today
-        if inv.last_reminder_sent and inv.last_reminder_sent >= today_start:
+        if inv.last_reminder_sent and _as_aware_utc(inv.last_reminder_sent) >= today_start:
             continue
 
         debtor = inv.debtor
@@ -196,7 +215,7 @@ def run_voice_calls(db: Session):
 
     for inv in voice_invoices:
         # Only call once every 3 days max
-        if inv.last_reminder_sent and (datetime.now(timezone.utc) - inv.last_reminder_sent).days < 3:
+        if inv.last_reminder_sent and (datetime.now(timezone.utc) - _as_aware_utc(inv.last_reminder_sent)).days < 3:
             continue
 
         debtor = inv.debtor

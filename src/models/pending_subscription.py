@@ -2,7 +2,8 @@
 that hasn't registered a User account yet — since Stripe Checkout collects
 payment before this app has ever seen the customer. Consumed and deleted the
 moment that email registers, so the plan is never lost."""
-from sqlalchemy import Column, String, Integer, TIMESTAMP
+from sqlalchemy import Column, String, Integer
+from sqlalchemy.types import TIMESTAMP
 import uuid
 from datetime import datetime, timezone
 from .base import Base
@@ -16,4 +17,4 @@ class PendingSubscription(Base):
     chases_limit = Column(Integer, nullable=False)
     stripe_customer_id = Column(String, nullable=True)
     stripe_subscription_id = Column(String, nullable=True)
-    created_at = Column(TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc))

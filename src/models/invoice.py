@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Integer, Numeric, Date, ForeignKey, Enum, TIMESTAMP
+from sqlalchemy import Column, String, Integer, Numeric, Date, ForeignKey, Enum
+from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
 from .base import Base
 import enum
@@ -30,9 +31,9 @@ class Invoice(Base):
     payment_instructions = Column(String)
     payment_link = Column(String, nullable=True)
     status = Column(Enum(InvoiceStatus), nullable=False)
-    last_reminder_sent = Column(TIMESTAMP)
+    last_reminder_sent = Column(TIMESTAMP(timezone=True))
     # Escalation tracking
     escalation_tier = Column(String, nullable=False, default="email")
-    escalation_started_at = Column(TIMESTAMP, nullable=True)
+    escalation_started_at = Column(TIMESTAMP(timezone=True), nullable=True)
     sms_sent_count = Column(Integer, nullable=False, default=0)
     voice_call_count = Column(Integer, nullable=False, default=0)

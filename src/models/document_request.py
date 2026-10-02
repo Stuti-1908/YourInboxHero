@@ -3,9 +3,11 @@
 Similar to Invoice but instead of chasing money, it chases paperwork.
 The same 3-tier escalation engine (email → SMS → voice) applies.
 """
-from sqlalchemy import Column, String, Text, Date, Integer, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, String, Text, Date, Integer, ForeignKey
+from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
 from .base import Base
+from datetime import datetime, timezone
 import uuid
 
 
@@ -28,13 +30,13 @@ class DocumentRequest(Base):
     # Upload tracking
     upload_token = Column(String, unique=True, nullable=False, default=lambda: f"doc_{uuid.uuid4().hex[:12]}")
     uploaded_file_name = Column(String, nullable=True)
-    uploaded_at = Column(TIMESTAMP, nullable=True)
-    
+    uploaded_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
     # Reminder tracking (same as Invoice)
-    last_reminder_sent = Column(TIMESTAMP, nullable=True)
+    last_reminder_sent = Column(TIMESTAMP(timezone=True), nullable=True)
     escalation_tier = Column(String, nullable=False, default="email")
-    escalation_started_at = Column(TIMESTAMP, nullable=True)
+    escalation_started_at = Column(TIMESTAMP(timezone=True), nullable=True)
     sms_sent_count = Column(Integer, nullable=False, default=0)
     voice_call_count = Column(Integer, nullable=False, default=0)
-    
-    created_at = Column(TIMESTAMP, nullable=False, default=lambda: __import__('datetime').datetime.utcnow())
+
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

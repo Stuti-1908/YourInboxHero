@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Boolean, Integer, TIMESTAMP
+from sqlalchemy import Column, String, Boolean, Integer
+from sqlalchemy.types import TIMESTAMP
 import uuid
 import secrets
 from .base import Base
@@ -24,7 +25,7 @@ class User(Base):
     # Subscription tracking
     subscription_plan = Column(String, nullable=True)  # 'starter', 'growth', 'scale'
     subscription_status = Column(String, nullable=False, default="inactive")  # 'inactive', 'active', 'cancelled'
-    subscription_started_at = Column(TIMESTAMP, nullable=True)
+    subscription_started_at = Column(TIMESTAMP(timezone=True), nullable=True)
     stripe_customer_id = Column(String, nullable=True)
     stripe_subscription_id = Column(String, nullable=True)
     chases_limit = Column(Integer, nullable=False, default=0)  # 100, 300, 750

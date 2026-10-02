@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchInvoices, pauseInvoice, downloadInvoicePdf } from '../api/invoice';
+import { fetchInvoices, pauseInvoice, resumeInvoice, markInvoicePaid, downloadInvoicePdf } from '../api/invoice';
 import type { Invoice } from '../api/invoice';
 import './InvoiceTable.css';
 
@@ -17,6 +17,24 @@ export const InvoiceTable = () => {
     try {
       await pauseInvoice(id);
       setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: 'paused' } : i));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleResume = async (id: string) => {
+    try {
+      const { status } = await resumeInvoice(id);
+      setInvoices(prev => prev.map(i => i.id === id ? { ...i, status } : i));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleMarkPaid = async (id: string) => {
+    try {
+      await markInvoicePaid(id);
+      setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: 'paid' } : i));
     } catch (err: any) {
       setError(err.message);
     }
@@ -61,14 +79,24 @@ export const InvoiceTable = () => {
                   </span>
                 </td>
                 <td>
-                  <button 
-                    className="btn-action"
-                    onClick={() => handlePause(invoice.id)}
-                    disabled={invoice.status === 'paused'}
-                  >
-                    {invoice.status === 'paused' ? 'Paused' : 'Pause Reminders'}
-                  </button>
-                  <button 
+                  {invoice.status !== 'paid' && (
+                    <button
+                      className="btn-action"
+                      onClick={() => invoice.status === 'paused' ? handleResume(invoice.id) : handlePause(invoice.id)}
+                    >
+                      {invoice.status === 'paused' ? 'Resume' : 'Pause Reminders'}
+                    </button>
+                  )}
+                  {invoice.status !== 'paid' && (
+                    <button
+                      className="btn-action"
+                      onClick={() => handleMarkPaid(invoice.id)}
+                      style={{ marginLeft: '8px' }}
+                    >
+                      Mark Paid
+                    </button>
+                  )}
+                  <button
                     className="btn-action"
                     onClick={() => downloadInvoicePdf(invoice.id)}
                     style={{ marginLeft: '8px' }}

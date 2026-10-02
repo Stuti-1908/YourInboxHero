@@ -76,11 +76,28 @@ export const fetchAnalytics = async (): Promise<AnalyticsData> => {
 
 
 export const pauseInvoice = async (id: string): Promise<void> => {
-  const res = await fetch(`${API_BASE}/invoice/${id}/pause`, { 
+  const res = await fetch(`${API_BASE}/invoice/${id}/pause`, {
     method: 'POST',
     headers: getAuthHeaders()
   });
   if (!res.ok) throw new Error('Failed to pause invoice');
+};
+
+export const resumeInvoice = async (id: string): Promise<{ status: string }> => {
+  const res = await fetch(`${API_BASE}/invoice/${id}/resume`, {
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to resume invoice');
+  return await res.json();
+};
+
+export const markInvoicePaid = async (id: string): Promise<void> => {
+  const res = await fetch(`${API_BASE}/invoice/${id}/mark-paid`, {
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to mark invoice as paid');
 };
 
 export const fetchDebtors = async (): Promise<Debtor[]> => {
