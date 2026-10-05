@@ -1,12 +1,22 @@
-"""Daily sweep scheduler with distributed locking for multi-instance safety."""
-import logging
+"""Daily sweep scheduler.
+
+Previously used a Postgres advisory lock to guard against overlapping runs
+across multiple instances. There is currently only one Hetzner instance
+(Dockerfile runs uvicorn with --workers 1), so the lock added real risk —
+see run_daily_sweep's history: db.commit() calls inside the locked steps
+can return the connection to the pool, meaning the unlock could execute on
+a *different* pooled connection than the one that acquired the lock,
+leaving it held indefinitely and silently skipping every future sweep
+(daily_sweep_lock_not_acquired). Removed rather than fixed properly, since
+there's no multi-instance deployment to protect yet; re-add it (correctly,
+on a connection not shared with any commit) if/when this scales beyond one
+instance.
+"""
 import structlog
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import text
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone, timedelta
-from contextlib import contextmanager
+from datetime import datetime, timezone, timedelta, date
 
 from src.db import SessionLocal
 from src.models.user import User  # noqa: F401
@@ -46,35 +56,6 @@ def _as_aware_utc(dt):
 EMAIL_TO_SMS_DAYS = settings.email_to_sms_days
 SMS_TO_VOICE_DAYS = settings.sms_to_voice_days
 
-# PostgreSQL advisory lock key for daily sweep (arbitrary but consistent)
-SWEEP_LOCK_KEY = 1234567890
-
-
-@contextmanager
-def sweep_lock(db: Session):
-    """
-    PostgreSQL advisory lock to ensure only one instance runs the daily sweep.
-    
-    Returns True if lock acquired, False otherwise.
-    """
-    # Try to acquire lock (non-blocking)
-    result = db.execute(text("SELECT pg_try_advisory_lock(:lock_key)"), {"lock_key": SWEEP_LOCK_KEY})
-    acquired = result.scalar()
-    
-    if not acquired:
-        logger.warning("daily_sweep_lock_not_acquired", lock_key=SWEEP_LOCK_KEY)
-        yield False
-        return
-    
-    logger.info("daily_sweep_lock_acquired", lock_key=SWEEP_LOCK_KEY)
-    try:
-        yield True
-    finally:
-        # Release lock
-        db.execute(text("SELECT pg_advisory_unlock(:lock_key)"), {"lock_key": SWEEP_LOCK_KEY})
-        db.commit()
-        logger.info("daily_sweep_lock_released", lock_key=SWEEP_LOCK_KEY)
-
 
 def run_escalation_sweep(db: Session):
     """Check all overdue invoices and escalate them through tiers."""
@@ -86,35 +67,39 @@ def run_escalation_sweep(db: Session):
     ).all()
     
     for inv in overdue_invoices:
-        # Initialize escalation_started_at if not set
-        if not inv.escalation_started_at:
-            inv.escalation_started_at = now
-            db.commit()
-            continue
-        
-        days_in_tier = (now - _as_aware_utc(inv.escalation_started_at)).days
-        
-        # TIER 1 → TIER 2: Email to SMS
-        if inv.escalation_tier == "email" and days_in_tier >= EMAIL_TO_SMS_DAYS:
-            inv.escalation_tier = "sms"
-            inv.escalation_started_at = now
-            logger.info("invoice_escalated", 
-                       invoice_id=str(inv.id), 
-                       invoice_number=inv.invoice_number,
-                       from_tier="email", to_tier="sms",
-                       days_in_tier=days_in_tier)
-            db.commit()
-        
-        # TIER 2 → TIER 3: SMS to Voice
-        elif inv.escalation_tier == "sms" and days_in_tier >= SMS_TO_VOICE_DAYS:
-            inv.escalation_tier = "voice"
-            inv.escalation_started_at = now
-            logger.info("invoice_escalated",
-                       invoice_id=str(inv.id),
-                       invoice_number=inv.invoice_number,
-                       from_tier="sms", to_tier="voice",
-                       days_in_tier=days_in_tier)
-            db.commit()
+        try:
+            # Initialize escalation_started_at if not set
+            if not inv.escalation_started_at:
+                inv.escalation_started_at = now
+                db.commit()
+                continue
+
+            days_in_tier = (now - _as_aware_utc(inv.escalation_started_at)).days
+
+            # TIER 1 → TIER 2: Email to SMS
+            if inv.escalation_tier == "email" and days_in_tier >= EMAIL_TO_SMS_DAYS:
+                inv.escalation_tier = "sms"
+                inv.escalation_started_at = now
+                logger.info("invoice_escalated",
+                           invoice_id=str(inv.id),
+                           invoice_number=inv.invoice_number,
+                           from_tier="email", to_tier="sms",
+                           days_in_tier=days_in_tier)
+                db.commit()
+
+            # TIER 2 → TIER 3: SMS to Voice
+            elif inv.escalation_tier == "sms" and days_in_tier >= SMS_TO_VOICE_DAYS:
+                inv.escalation_tier = "voice"
+                inv.escalation_started_at = now
+                logger.info("invoice_escalated",
+                           invoice_id=str(inv.id),
+                           invoice_number=inv.invoice_number,
+                           from_tier="sms", to_tier="voice",
+                           days_in_tier=days_in_tier)
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("escalation_step_failed", invoice_id=str(inv.id), error=str(e), exc_info=True)
 
 
 def run_sms_reminders(db: Session):
@@ -178,23 +163,30 @@ def run_sms_reminders(db: Session):
         for key, val in replacements.items():
             message = message.replace(key, val)
         
-        success = send_sms(
-            phone=debtor.phone,
-            message=message,
-            contact_name=debtor.name,
-            contact_email=debtor.email
-        )
-        
-        if success:
-            inv.sms_sent_count = (inv.sms_sent_count or 0) + 1
-            inv.last_reminder_sent = datetime.now(timezone.utc)
-            record_chase_used(user, db, channel='sms', invoice_id=str(inv.id))
-            logger.info("sms_sent",
-                       invoice_id=str(inv.id),
-                       invoice_number=inv.invoice_number,
-                       debtor_phone=debtor.phone)
+        try:
+            success = send_sms(
+                phone=debtor.phone,
+                message=message,
+                contact_name=debtor.name,
+                contact_email=debtor.email
+            )
 
-    db.commit()
+            if success:
+                inv.sms_sent_count = (inv.sms_sent_count or 0) + 1
+                inv.last_reminder_sent = datetime.now(timezone.utc)
+                record_chase_used(user, db, channel='sms', invoice_id=str(inv.id))
+                logger.info("sms_sent",
+                           invoice_id=str(inv.id),
+                           invoice_number=inv.invoice_number,
+                           debtor_phone=debtor.phone)
+            # Commit per-invoice: a later invoice in this loop throwing must
+            # not roll back an earlier invoice's already-successful send,
+            # which would otherwise cause it to be sent again next run (and
+            # not count against the user's quota the first time either).
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("sms_send_failed", invoice_id=str(inv.id), error=str(e), exc_info=True)
 
 
 def run_voice_calls(db: Session):
@@ -250,65 +242,107 @@ def run_voice_calls(db: Session):
         company_name = user.company_name or "YourInboxHero"
         message = f"This is an automated call from {company_name}. Invoice number {inv.invoice_number} for ${inv.amount:.2f} is overdue. Please make your payment immediately."
 
-        success = trigger_voice_call(
-            phone=debtor.phone,
-            message=message,
-            contact_name=debtor.name,
-            contact_email=debtor.email
-        )
+        try:
+            success = trigger_voice_call(
+                phone=debtor.phone,
+                message=message,
+                contact_name=debtor.name,
+                contact_email=debtor.email
+            )
 
-        if success:
-            inv.voice_call_count = (inv.voice_call_count or 0) + 1
-            inv.last_reminder_sent = datetime.now(timezone.utc)
-            record_chase_used(user, db, channel='voice', invoice_id=str(inv.id))
-            logger.info("voice_call_triggered",
-                       invoice_id=str(inv.id),
-                       invoice_number=inv.invoice_number,
-                       debtor_phone=debtor.phone)
+            if success:
+                inv.voice_call_count = (inv.voice_call_count or 0) + 1
+                inv.last_reminder_sent = datetime.now(timezone.utc)
+                record_chase_used(user, db, channel='voice', invoice_id=str(inv.id))
+                logger.info("voice_call_triggered",
+                           invoice_id=str(inv.id),
+                           invoice_number=inv.invoice_number,
+                           debtor_phone=debtor.phone)
+            # Commit per-invoice — see the matching comment in run_sms_reminders.
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("voice_call_failed", invoice_id=str(inv.id), error=str(e), exc_info=True)
 
+
+SWEEP_RUN_ID = "daily_sweep"
+
+
+def _mark_sweep_run_today(db: Session) -> None:
+    """Upsert today's date into sweep_run, so the startup catch-up check
+    (run_catch_up_sweep_if_needed) knows this already happened."""
+    from src.models.sweep_run import SweepRun
+
+    today = datetime.now(timezone.utc).date()
+    row = db.query(SweepRun).filter(SweepRun.id == SWEEP_RUN_ID).first()
+    if row:
+        row.last_run_date = today
+    else:
+        db.add(SweepRun(id=SWEEP_RUN_ID, last_run_date=today))
     db.commit()
 
 
 def run_daily_sweep():
-    """Main daily sweep job with distributed lock."""
+    """Main daily sweep job."""
     logger.info("daily_sweep_started")
-    
+
     db: Session = SessionLocal()
     try:
-        with sweep_lock(db) as acquired:
-            if not acquired:
-                logger.info("daily_sweep_skipped_another_instance_running")
-                return
-            
-            # Each step is isolated: a failure in one (e.g. email provider
-            # outage) must not prevent the others from running, since they
-            # cover different invoices/channels.
-            steps = [
-                ("overdue_transition", lambda: transition_overdue(db)),
-                ("pre_due_reminders", lambda: process_due_reminders() if settings.reminders_enabled
-                    else logger.info("reminders_disabled_via_settings")),
-                ("escalation_sweep", lambda: run_escalation_sweep(db)),
-                ("sms_reminders", lambda: run_sms_reminders(db)),
-                ("voice_calls", lambda: run_voice_calls(db)),
-            ]
-            for step_name, step_fn in steps:
-                try:
-                    result = step_fn()
-                    if step_name == "overdue_transition":
-                        logger.info("overdue_transition_completed", count=result)
-                except Exception as e:
-                    logger.error(f"daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
-            
+        # Each step is isolated: a failure in one (e.g. email provider
+        # outage) must not prevent the others from running, since they
+        # cover different invoices/channels.
+        steps = [
+            ("overdue_transition", lambda: transition_overdue(db)),
+            ("pre_due_reminders", lambda: process_due_reminders() if settings.reminders_enabled
+                else logger.info("reminders_disabled_via_settings")),
+            ("escalation_sweep", lambda: run_escalation_sweep(db)),
+            ("sms_reminders", lambda: run_sms_reminders(db)),
+            ("voice_calls", lambda: run_voice_calls(db)),
+        ]
+        for step_name, step_fn in steps:
+            try:
+                result = step_fn()
+                if step_name == "overdue_transition":
+                    logger.info("overdue_transition_completed", count=result)
+            except Exception as e:
+                logger.error(f"daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
+
+        _mark_sweep_run_today(db)
+
     except Exception as e:
         logger.error("daily_sweep_failed", error=str(e), exc_info=True)
     finally:
         db.close()
-    
+
     logger.info("daily_sweep_completed")
 
 
+def run_catch_up_sweep_if_needed():
+    """Called once at app startup. If today's scheduled 08:00 UTC sweep
+    hasn't run yet (e.g. the container was down at that time, or this is
+    the first deploy of the day), run it immediately instead of silently
+    waiting until tomorrow's cron fire."""
+    from src.models.sweep_run import SweepRun
+
+    db: Session = SessionLocal()
+    try:
+        row = db.query(SweepRun).filter(SweepRun.id == SWEEP_RUN_ID).first()
+        today = datetime.now(timezone.utc).date()
+        already_ran_today = row is not None and row.last_run_date == today
+    finally:
+        db.close()
+
+    if already_ran_today:
+        logger.info("daily_sweep_catch_up_not_needed")
+        return
+
+    logger.info("daily_sweep_catch_up_running")
+    run_daily_sweep()
+
+
 def start_scheduler():
-    """Start the APScheduler with daily sweep job."""
+    """Start the APScheduler with daily sweep job, plus an immediate
+    catch-up run if today's scheduled sweep hasn't happened yet."""
     scheduler.add_job(
         run_daily_sweep,
         trigger=CronTrigger(hour=8, minute=0, timezone="UTC"),
@@ -320,6 +354,8 @@ def start_scheduler():
     )
     scheduler.start()
     logger.info("scheduler_started", job_id="daily_sweep_job")
+
+    run_catch_up_sweep_if_needed()
 
 
 def shutdown_scheduler():
