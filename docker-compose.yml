@@ -6,6 +6,11 @@ services:
       - .env
     expose:
       - "8000"
+    volumes:
+      # Client-uploaded documents (W-9s, signed contracts, etc.) — a named
+      # volume so files survive container rebuilds/redeploys, unlike the
+      # container's own writable layer.
+      - uploaded_documents:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health/live"]
       interval: 30s
@@ -29,3 +34,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  uploaded_documents:

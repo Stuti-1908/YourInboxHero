@@ -15,6 +15,7 @@ import { DocumentTable } from './components/DocumentTable';
 import { CreateDocumentRequest } from './components/CreateDocumentRequest';
 import { CreateDocumentClient } from './components/CreateDocumentClient';
 import { PaymentSuccess } from './components/PaymentSuccess';
+import { PublicDocumentUpload } from './components/PublicDocumentUpload';
 import { logout, getCompanyName } from './api/invoice';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import './App.css';
@@ -141,21 +142,30 @@ function App() {
     navigate('/dashboard');
   };
 
-  if (authed) {
-    return (
-      <Routes>
-        <Route path="/*" element={<DashboardLayout />} />
-      </Routes>
-    );
-  }
-
+  // The document-upload link is public and must work regardless of whether
+  // the viewing device happens to have a login token — e.g. a business
+  // owner opening their own upload link to test it, or a debtor using a
+  // shared/work device. It's hoisted above the authed/unauthed branches
+  // below so neither can shadow it.
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onGetStarted={() => navigate('/sign-up')} onSignIn={() => navigate('/sign-in')} />} />
-      <Route path="/sign-in" element={<Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => navigate('/sign-up')} />} />
-      <Route path="/sign-up" element={<Register onRegisterSuccess={handleLoginSuccess} onSwitchToLogin={() => navigate('/sign-in')} onViewPricing={() => navigate('/#pricing')} />} />
-      <Route path="/payment-success" element={<PaymentSuccess onGoToRegister={() => navigate('/sign-up')} onGoToLogin={() => navigate('/sign-in')} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/upload/:token" element={<PublicDocumentUpload />} />
+      <Route
+        path="/*"
+        element={
+          authed ? (
+            <DashboardLayout />
+          ) : (
+            <Routes>
+              <Route path="/" element={<LandingPage onGetStarted={() => navigate('/sign-up')} onSignIn={() => navigate('/sign-in')} />} />
+              <Route path="/sign-in" element={<Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => navigate('/sign-up')} />} />
+              <Route path="/sign-up" element={<Register onRegisterSuccess={handleLoginSuccess} onSwitchToLogin={() => navigate('/sign-in')} onViewPricing={() => navigate('/#pricing')} />} />
+              <Route path="/payment-success" element={<PaymentSuccess onGoToRegister={() => navigate('/sign-up')} onGoToLogin={() => navigate('/sign-in')} />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          )
+        }
+      />
     </Routes>
   );
 }

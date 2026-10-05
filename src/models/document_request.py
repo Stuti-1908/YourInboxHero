@@ -29,7 +29,8 @@ class DocumentRequest(Base):
     
     # Upload tracking
     upload_token = Column(String, unique=True, nullable=False, default=lambda: f"doc_{uuid.uuid4().hex[:12]}")
-    uploaded_file_name = Column(String, nullable=True)
+    uploaded_file_name = Column(String, nullable=True)  # original filename, for display to the business owner
+    stored_file_name = Column(String, nullable=True)  # generated on-disk filename — never derived from user input
     uploaded_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     # Reminder tracking (same as Invoice)

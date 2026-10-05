@@ -386,6 +386,59 @@ export const deleteDocumentRequest = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Failed to delete document request');
 };
 
+export const downloadDocument = async (docId: string, suggestedFileName?: string): Promise<void> => {
+  const res = await fetch(`${API_BASE}/documents/${docId}/download`, {
+    headers: getAuthHeaders(),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to download document');
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedFileName || 'document';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// ============ Public document upload (no auth — used by the upload page) ============
+
+export interface PublicDocumentRequestInfo {
+  title: string;
+  description?: string;
+  due_date: string;
+  status: string;
+  business_name: string;
+  already_uploaded_file_name?: string;
+}
+
+export const fetchUploadRequestInfo = async (token: string): Promise<PublicDocumentRequestInfo> => {
+  const res = await fetch(`${API_BASE}/documents/upload/${token}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Invalid or expired upload link');
+  }
+  return await res.json();
+};
+
+export const submitDocumentUpload = async (token: string, file: File): Promise<void> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/documents/upload/${token}`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to upload file');
+  }
+};
+
 // ============ CSV Bulk Import ============
 
 export interface ImportRow {

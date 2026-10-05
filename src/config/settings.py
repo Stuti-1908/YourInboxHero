@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # Sentry error tracking — unset by default, which leaves Sentry fully
     # inactive (no network calls, no overhead). Set SENTRY_DSN to enable.
     sentry_dsn: Optional[str] = Field(default=None, description="Sentry DSN for error tracking")
+
+    # Directory client-uploaded documents are written to. Must be a path
+    # backed by a persistent volume in production (see docker-compose.yml's
+    # uploaded_documents volume) or uploads are lost on every redeploy.
+    upload_dir: str = Field(default="./uploads", description="Directory for client-uploaded documents")
+    max_upload_size_mb: int = Field(default=15, description="Maximum accepted upload size in MB")
     
     # Feature flags
     unleash_url: Optional[str] = Field(default=None, description="Unleash feature flag service URL")

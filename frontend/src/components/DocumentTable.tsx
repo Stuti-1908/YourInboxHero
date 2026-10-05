@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchDocumentRequests, deleteDocumentRequest } from '../api/invoice';
+import { fetchDocumentRequests, deleteDocumentRequest, downloadDocument } from '../api/invoice';
 import type { DocumentRequest } from '../api/invoice';
 import './InvoiceTable.css';
 
@@ -27,6 +27,14 @@ export const DocumentTable: React.FC = () => {
       setDocs(docs.filter(d => d.id !== id));
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDownload = async (doc: DocumentRequest) => {
+    try {
+      await downloadDocument(doc.id, doc.uploaded_file_name);
+    } catch (err: any) {
+      alert(err.message || 'Failed to download document');
     }
   };
 
@@ -101,7 +109,7 @@ export const DocumentTable: React.FC = () => {
                 <td>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/api/documents/upload/${doc.upload_token}`);
+                      navigator.clipboard.writeText(`${window.location.origin}/upload/${doc.upload_token}`);
                       alert('Upload link copied!');
                     }}
                     style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent' }}
@@ -110,6 +118,14 @@ export const DocumentTable: React.FC = () => {
                   </button>
                 </td>
                 <td>
+                  {doc.status === 'submitted' || doc.status === 'approved' ? (
+                    <button
+                      onClick={() => handleDownload(doc)}
+                      style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent', marginRight: '8px' }}
+                    >
+                      Download
+                    </button>
+                  ) : null}
                   <button
                     onClick={() => handleDelete(doc.id)}
                     style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid #dc2626', color: '#dc2626', background: 'transparent' }}
