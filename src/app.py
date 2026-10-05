@@ -196,14 +196,19 @@ def get_correlation_id(request: Request) -> str:
     return request.state.correlation_id if hasattr(request.state, "correlation_id") else "unknown"
 
 
-# Health check endpoints (not versioned - infrastructure level)
-@app.get("/health/live", tags=["health"])
+# Health check endpoints (not versioned - infrastructure level). Explicit
+# HEAD support matters here: uptime monitors (UptimeRobot, etc.) default to
+# HEAD requests to save bandwidth, and while FastAPI normally auto-derives
+# HEAD from a GET route, that didn't hold here in practice (405 on HEAD,
+# 200 on GET) — declaring both methods directly is the robust fix rather
+# than debugging exactly which middleware interferes with the auto-derivation.
+@app.api_route("/health/live", methods=["GET", "HEAD"], tags=["health"])
 async def liveness_probe():
     """Liveness probe - process is alive."""
     return {"status": "alive"}
 
 
-@app.get("/health/ready", tags=["health"])
+@app.api_route("/health/ready", methods=["GET", "HEAD"], tags=["health"])
 async def readiness_probe(request: Request, db: Session = Depends(get_db)):
     """Readiness probe - checks DB and critical dependencies."""
     correlation_id = get_correlation_id(request)
