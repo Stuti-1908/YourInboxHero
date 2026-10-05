@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     
     # Azure / Monitoring
     applicationinsights_connection_string: Optional[str] = Field(default=None)
+
+    # Sentry error tracking — unset by default, which leaves Sentry fully
+    # inactive (no network calls, no overhead). Set SENTRY_DSN to enable.
+    sentry_dsn: Optional[str] = Field(default=None, description="Sentry DSN for error tracking")
     
     # Feature flags
     unleash_url: Optional[str] = Field(default=None, description="Unleash feature flag service URL")

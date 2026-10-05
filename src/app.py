@@ -42,6 +42,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger("yourinboxhero")
 
+# structlog was used throughout the codebase (logger.info("event", key=value))
+# without ever being configured, so every call silently fell back to its
+# default settings rather than the app's actual logging setup. Renders JSON
+# in production (machine-parseable, what Sentry/log aggregators expect) and
+# readable colored output locally.
+import structlog
+_is_production = get_settings().environment == "production"
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer() if _is_production else structlog.dev.ConsoleRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
 
 
 class CorrelationIdMiddleware:
@@ -116,6 +138,23 @@ async def lifespan(app: FastAPI):
     shutdown_scheduler()
     logger.info("Application shutdown")
 
+
+# Initialize Sentry before the app is constructed so it can catch startup
+# errors too, and so its FastAPI integration can auto-instrument requests.
+# Fully inert (no network calls at all) when SENTRY_DSN is unset — safe to
+# ship unconditionally rather than gating this whole block on environment.
+_settings_for_sentry = get_settings()
+if _settings_for_sentry.sentry_dsn:
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=_settings_for_sentry.sentry_dsn,
+        environment=_settings_for_sentry.environment,
+        # Captures a sample of request traces for performance monitoring,
+        # not just errors. Kept modest since this is a low-traffic app
+        # today; revisit if Sentry's event volume/cost becomes a concern.
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
 
 app = FastAPI(
     title="YourInboxHero API",

@@ -21,3 +21,4 @@ slowapi
 structlog
 tenacity
 psycopg2-binary
+sentry-sdk[fastapi]
