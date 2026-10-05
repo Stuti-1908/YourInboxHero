@@ -17,12 +17,13 @@ from datetime import date, datetime, timedelta, timezone
 from src.db import SessionLocal
 from src.models.debtor import Debtor
 from src.models.invoice import Invoice, InvoiceStatus
+from src.models.user import User
 from src.scheduler import run_escalation_sweep, run_sms_reminders, run_voice_calls
 
 
-def _make_debtor(session, name="Scheduler Test Corp", phone=None, voice_call_consent=False):
+def _make_debtor(session, name="Scheduler Test Corp", phone=None, voice_call_consent=False, user_id='test-id'):
     d = Debtor(
-        user_id='test-id',
+        user_id=user_id,
         id=str(uuid.uuid4()),
         name=name,
         email=f"{uuid.uuid4().hex[:8]}@example.com",
@@ -33,6 +34,18 @@ def _make_debtor(session, name="Scheduler Test Corp", phone=None, voice_call_con
     session.add(d)
     session.flush()
     return d
+
+
+def _make_user(session, subscription_status="active", chases_limit=750, chases_used=0):
+    u = User(
+        id=str(uuid.uuid4()), username=f"{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="pwd", company_name="Scheduler Test User Co",
+        subscription_plan="scale", subscription_status=subscription_status,
+        chases_limit=chases_limit, chases_used=chases_used,
+    )
+    session.add(u)
+    session.flush()
+    return u
 
 
 def _make_overdue_invoice(session, debtor, escalation_tier, escalation_started_at, last_reminder_sent=None):
@@ -157,6 +170,64 @@ def test_voice_calls_skips_debtor_without_consent():
     session = SessionLocal()
     try:
         # The invoice must be untouched: no call recorded, no chase counted.
+        refreshed = session.query(Invoice).filter(Invoice.id == inv_id).first()
+        assert refreshed.voice_call_count == 0
+        assert refreshed.last_reminder_sent is None
+    finally:
+        session.close()
+
+
+def test_sms_reminders_skips_debtor_of_cancelled_subscription():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, subscription_status="cancelled")
+        debtor = _make_debtor(session, phone="+15551234567", user_id=user.id)
+        inv = _make_overdue_invoice(
+            session, debtor, escalation_tier="sms",
+            escalation_started_at=datetime.now(timezone.utc) - timedelta(days=5),
+        )
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        run_sms_reminders(session)
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        refreshed = session.query(Invoice).filter(Invoice.id == inv_id).first()
+        assert refreshed.sms_sent_count == 0
+        assert refreshed.last_reminder_sent is None
+    finally:
+        session.close()
+
+
+def test_voice_calls_skips_debtor_of_past_due_subscription():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, subscription_status="past_due")
+        debtor = _make_debtor(session, phone="+15551234567", voice_call_consent=True, user_id=user.id)
+        inv = _make_overdue_invoice(
+            session, debtor, escalation_tier="voice",
+            escalation_started_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        run_voice_calls(session)
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
         refreshed = session.query(Invoice).filter(Invoice.id == inv_id).first()
         assert refreshed.voice_call_count == 0
         assert refreshed.last_reminder_sent is None

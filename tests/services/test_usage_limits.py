@@ -4,19 +4,61 @@ import uuid
 from unittest.mock import patch
 from src.db import SessionLocal
 from src.models.user import User
-from src.services.usage_limits import record_chase_used, has_chase_capacity
+from src.services.usage_limits import record_chase_used, has_chase_capacity, can_send_chase
 
 
-def _make_user(session, chases_limit=100, chases_used=0):
+def _make_user(session, chases_limit=100, chases_used=0, subscription_status="active"):
     u = User(
         id=str(uuid.uuid4()), username=f"{uuid.uuid4().hex[:8]}@example.com",
         hashed_password="pwd", company_name="Test Co",
-        subscription_plan="growth", subscription_status="active",
+        subscription_plan="growth", subscription_status=subscription_status,
         chases_limit=chases_limit, chases_used=chases_used,
     )
     session.add(u)
     session.flush()
     return u
+
+
+def test_can_send_chase_true_when_active_and_under_limit():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=100, chases_used=10, subscription_status="active")
+        session.commit()
+        assert can_send_chase(user) is True
+    finally:
+        session.close()
+
+
+def test_can_send_chase_false_when_cancelled_even_with_capacity():
+    """The core fix: a cancelled account must stop generating chases
+    immediately, not just once its last paid month's quota runs out."""
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=100, chases_used=10, subscription_status="cancelled")
+        session.commit()
+        assert can_send_chase(user) is False
+    finally:
+        session.close()
+
+
+def test_can_send_chase_false_when_past_due_even_with_capacity():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=100, chases_used=10, subscription_status="past_due")
+        session.commit()
+        assert can_send_chase(user) is False
+    finally:
+        session.close()
+
+
+def test_can_send_chase_false_when_active_but_over_limit():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=100, chases_used=100, subscription_status="active")
+        session.commit()
+        assert can_send_chase(user) is False
+    finally:
+        session.close()
 
 
 def test_record_chase_used_increments_count():

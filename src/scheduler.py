@@ -120,7 +120,7 @@ def run_escalation_sweep(db: Session):
 def run_sms_reminders(db: Session):
     """Send SMS reminders for invoices in the SMS escalation tier."""
     from src.services.ghl_service import send_sms
-    from src.services.usage_limits import has_chase_capacity, record_chase_used
+    from src.services.usage_limits import can_send_chase, record_chase_used
     from src.services.plan_features import plan_has_feature
 
     sms_invoices = db.query(Invoice).filter(
@@ -143,10 +143,11 @@ def run_sms_reminders(db: Session):
             continue
 
         user = debtor.user
-        if not has_chase_capacity(user):
-            logger.warning("sms_skipped_chase_limit_reached",
+        if not can_send_chase(user):
+            logger.warning("sms_skipped_cannot_send_chase",
                           invoice_id=str(inv.id),
                           user_id=user.id,
+                          subscription_status=user.subscription_status,
                           chases_used=user.chases_used,
                           chases_limit=user.chases_limit)
             continue
@@ -205,7 +206,7 @@ def run_voice_calls(db: Session):
     it just never gets called while the plan doesn't cover it.
     """
     from src.services.ghl_service import trigger_voice_call
-    from src.services.usage_limits import has_chase_capacity, record_chase_used
+    from src.services.usage_limits import can_send_chase, record_chase_used
     from src.services.plan_features import plan_has_feature
 
     voice_invoices = db.query(Invoice).filter(
@@ -238,10 +239,11 @@ def run_voice_calls(db: Session):
                        user_id=user.id,
                        plan=user.subscription_plan)
             continue
-        if not has_chase_capacity(user):
-            logger.warning("voice_call_skipped_chase_limit_reached",
+        if not can_send_chase(user):
+            logger.warning("voice_call_skipped_cannot_send_chase",
                           invoice_id=str(inv.id),
                           user_id=user.id,
+                          subscription_status=user.subscription_status,
                           chases_used=user.chases_used,
                           chases_limit=user.chases_limit)
             continue

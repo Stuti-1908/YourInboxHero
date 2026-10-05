@@ -22,6 +22,17 @@ def has_chase_capacity(user: User) -> bool:
     return used < limit
 
 
+def can_send_chase(user: User) -> bool:
+    """Single gate every automated send path must check before reaching out
+    to a debtor: the user must both have remaining quota AND an active
+    subscription. A cancelled or past-due account must stop generating
+    outbound email/SMS/voice immediately, not just once its last paid
+    month's chases run out -- that's unpaid service and can mean reminders
+    going out after a customer believes they've cancelled.
+    """
+    return user.subscription_status == "active" and has_chase_capacity(user)
+
+
 def record_chase_used(user: User, db: Session, channel: str, invoice_id: str) -> None:
     """Increment usage after a chase is actually sent (or attempted —
     callers should call this regardless of send success/failure, matching

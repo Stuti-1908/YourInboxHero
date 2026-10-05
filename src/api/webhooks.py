@@ -1,7 +1,7 @@
 """GHL Webhook with HMAC signature verification."""
 import hmac
 import hashlib
-import logging
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 from src.db import get_db
@@ -13,7 +13,7 @@ from typing import Optional
 from datetime import datetime, date
 import uuid
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -77,7 +77,13 @@ async def ghl_webhook_receiver(
     if not user:
         logger.warning("ghl_webhook_invalid_secret", webhook_secret_prefix=webhook_secret[:8])
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
-    
+
+    # A cancelled/past_due account must not keep accumulating new invoices
+    # (and therefore new chases) via GHL after their subscription lapses.
+    if user.subscription_status != "active":
+        logger.warning("ghl_webhook_inactive_subscription", user_id=user.id, subscription_status=user.subscription_status)
+        raise HTTPException(status_code=402, detail="Subscription is not active")
+
     # 2. Verify HMAC signature (if user has GHL configured)
     if user.ghl_webhook_signing_secret:
         # Get raw body for signature verification

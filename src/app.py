@@ -33,6 +33,7 @@ from src.models.invoice import Invoice  # noqa: F401
 from src.models.reminder import ReminderLog  # noqa: F401
 from src.models.email_template import EmailTemplate  # noqa: F401
 from src.models.document_request import DocumentRequest  # noqa: F401
+from src.models.processed_stripe_event import ProcessedStripeEvent  # noqa: F401
 
 # Configure structured logging
 logging.basicConfig(

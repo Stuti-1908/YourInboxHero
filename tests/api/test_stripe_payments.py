@@ -268,3 +268,178 @@ def test_webhook_does_not_reset_usage_on_first_payment():
         assert user.chases_used == 5  # unchanged, not wiped back to 0
     finally:
         session.close()
+
+
+def test_create_checkout_session_rejects_existing_active_subscriber(monkeypatch):
+    """A second checkout for an already-active subscriber would double-bill
+    them and leave the app tracking only one of the two subscriptions."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_secret_key", "sk_test_fake")
+    monkeypatch.setattr(stripe_payments.settings, "stripe_price_growth", "price_fake123")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.subscription_status = "active"
+        session.commit()
+    finally:
+        session.close()
+
+    resp = client.post("/api/payments/create-checkout-session", json={"plan": "growth", "email": username})
+    assert resp.status_code == 409
+
+
+def test_create_checkout_session_allows_inactive_subscriber(monkeypatch):
+    """A cancelled/past_due user (or brand new email) must still be able to
+    start checkout -- only an already-active subscription blocks it."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_secret_key", "sk_test_fake")
+    monkeypatch.setattr(stripe_payments.settings, "stripe_price_growth", "price_fake123")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.subscription_status = "cancelled"
+        session.commit()
+    finally:
+        session.close()
+
+    mock_session = MagicMock()
+    mock_session.url = "https://checkout.stripe.com/fake-session"
+    with patch("src.api.stripe_payments.stripe.checkout.Session.create", return_value=mock_session):
+        resp = client.post("/api/payments/create-checkout-session", json={"plan": "growth", "email": username})
+    assert resp.status_code == 200
+
+
+def test_webhook_deduplicates_replayed_event(monkeypatch):
+    """The same event ID delivered twice (Stripe retry, or a manual replay
+    from the dashboard) must only apply its side effects once."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_customer_id = "cus_dedup1"
+        user.subscription_status = "active"
+        user.chases_limit = 300
+        user.chases_used = 50
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_dedup_test1",
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {"customer": "cus_dedup1", "billing_reason": "subscription_cycle"}},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp1 = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+    assert resp1.status_code == 200
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.chases_used == 0  # reset by the first (genuine) delivery
+        user.chases_used = 77  # simulate chases sent since the renewal reset
+        session.commit()
+    finally:
+        session.close()
+
+    # Replay the identical event.
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp2 = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+    assert resp2.status_code == 200
+    assert resp2.json()["msg"] == "Event already processed"
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        # Must NOT have been reset a second time by the replay.
+        assert user.chases_used == 77
+    finally:
+        session.close()
+
+
+def test_webhook_subscription_updated_changes_plan(monkeypatch):
+    """A plan change made directly in Stripe (or via the billing portal)
+    must sync the new plan and chase limit without touching chases_used."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    monkeypatch.setattr(stripe_payments.settings, "stripe_price_scale", "price_scale_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_subscription_id = "sub_upgrade1"
+        user.subscription_plan = "growth"
+        user.subscription_status = "active"
+        user.chases_limit = 300
+        user.chases_used = 120
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_subupdate1",
+        "type": "customer.subscription.updated",
+        "data": {"object": {
+            "id": "sub_upgrade1",
+            "items": {"data": [{"price": {"id": "price_scale_fake"}}]},
+        }},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+    assert resp.status_code == 200
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.subscription_plan == "scale"
+        assert user.chases_limit == 750
+        assert user.chases_used == 120  # untouched by a mid-cycle tier change
+    finally:
+        session.close()
+
+
+def test_webhook_subscription_updated_ignores_unrecognized_price(monkeypatch):
+    """An unrecognized price ID (e.g. a one-off add-on, not a plan tier)
+    must not crash or silently corrupt the user's plan."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        user.stripe_subscription_id = "sub_unknown1"
+        user.subscription_plan = "growth"
+        session.commit()
+    finally:
+        session.close()
+
+    fake_event = {
+        "id": "evt_subupdate_unknown1",
+        "type": "customer.subscription.updated",
+        "data": {"object": {
+            "id": "sub_unknown1",
+            "items": {"data": [{"price": {"id": "price_totally_unrecognized"}}]},
+        }},
+    }
+
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        resp = client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+    assert resp.status_code == 200
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter(User.username == username).first()
+        assert user.subscription_plan == "growth"  # unchanged
+    finally:
+        session.close()

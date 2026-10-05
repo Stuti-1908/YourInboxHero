@@ -13,11 +13,13 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 
 import stripe
+from sqlalchemy.exc import IntegrityError
 
 from src.config.settings import get_settings
 from src.db import SessionLocal
 from src.models.user import User
 from src.models.pending_subscription import PendingSubscription
+from src.models.processed_stripe_event import ProcessedStripeEvent
 from src.rate_limit import limiter
 
 logger = structlog.get_logger(__name__)
@@ -60,6 +62,22 @@ def create_checkout_session(request: Request, data: CreateCheckoutSessionRequest
     if not price_id:
         raise HTTPException(status_code=503, detail=f"Plan '{data.plan}' is not configured (missing Stripe Price ID)")
 
+    # An existing active subscriber starting a second checkout would end up
+    # paying twice and billing_webhook/stripe_subscription_id would only
+    # ever reflect one of the two subscriptions -- the other keeps billing
+    # with nothing in this app tracking it. Direct them to manage their
+    # existing plan instead (via GET /payments/portal).
+    db = SessionLocal()
+    try:
+        existing_user = db.query(User).filter(User.username == data.email).first()
+        if existing_user and existing_user.subscription_status == "active":
+            raise HTTPException(
+                status_code=409,
+                detail="This email already has an active subscription. Manage it from Settings instead of starting a new checkout.",
+            )
+    finally:
+        db.close()
+
     client = _get_stripe_client()
     try:
         session = client.checkout.Session.create(
@@ -98,8 +116,22 @@ async def stripe_webhook(request: Request):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
     event_type = event["type"]
+    event_id = event["id"]
     db: Session = SessionLocal()
     try:
+        # Dedup: Stripe retries undelivered webhooks, and events can also be
+        # manually replayed from the dashboard. Claim this event ID before
+        # processing (insert fails if already seen) so a replay of e.g.
+        # invoice.payment_succeeded can't reset chases_used a second time
+        # mid-month, or re-activate/re-park a subscription redundantly.
+        try:
+            db.add(ProcessedStripeEvent(event_id=event_id, event_type=event_type))
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            logger.info("stripe_webhook_duplicate_event_skipped", event_id=event_id, event_type=event_type)
+            return {"msg": "Event already processed"}
+
         if event_type == "checkout.session.completed":
             session = event["data"]["object"]
             plan = session.get("metadata", {}).get("plan")
@@ -139,6 +171,32 @@ async def stripe_webhook(request: Request):
             db.commit()
             logger.info("subscription_activated", email=email, plan=plan)
             return {"msg": f"Subscription activated for {email}: {plan_config['name']}"}
+
+        elif event_type == "customer.subscription.updated":
+            # Fires on a plan upgrade/downgrade made directly in Stripe (or
+            # via the billing portal once GET /payments/portal exists).
+            # Deliberately does NOT reset chases_used — a mid-cycle tier
+            # change shouldn't wipe out usage the customer already has.
+            subscription = event["data"]["object"]
+            user = db.query(User).filter(User.stripe_subscription_id == subscription["id"]).first()
+            if user:
+                items = subscription.get("items", {}).get("data", [])
+                new_price_id = items[0]["price"]["id"] if items else None
+                matched_plan = None
+                for plan_key, plan_cfg in PLANS.items():
+                    if new_price_id and getattr(settings, plan_cfg["price_id_attr"]) == new_price_id:
+                        matched_plan = plan_key
+                        break
+
+                if matched_plan and matched_plan != user.subscription_plan:
+                    old_plan = user.subscription_plan
+                    user.subscription_plan = matched_plan
+                    user.chases_limit = PLANS[matched_plan]["chases"]
+                    db.commit()
+                    logger.info("subscription_plan_changed", user_id=user.id, old_plan=old_plan, new_plan=matched_plan)
+                elif not matched_plan:
+                    logger.warning("stripe_webhook_unrecognized_price_id", user_id=user.id, price_id=new_price_id)
+            return {"msg": "Subscription update processed"}
 
         elif event_type == "customer.subscription.deleted":
             subscription = event["data"]["object"]
