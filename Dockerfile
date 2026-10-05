@@ -33,7 +33,14 @@ COPY --from=backend-builder /app/alembic ./alembic
 COPY --from=backend-builder /app/alembic.ini .
 COPY --from=backend-builder /app/templates ./templates
 
-RUN chown -R appuser:appuser /app
+# Pre-create the uploads mount point owned by appuser before the volume
+# attaches — Docker initializes a fresh named volume by copying in the
+# image's existing directory at that path (including ownership), so this
+# is what makes the volume writable by the non-root user at first run.
+# A chown here does NOT retroactively fix an already-existing volume
+# that was first created root-owned (e.g. before this directory existed
+# in the image) — that needs a one-off `docker exec -u root ... chown`.
+RUN mkdir -p /app/uploads && chown -R appuser:appuser /app
 USER appuser
 
 ENV PATH="/home/appuser/.local/bin:${PATH}"
