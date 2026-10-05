@@ -172,8 +172,7 @@ async def preview_import(
     # the preview can flag likely duplicates before commit.
     existing_invoice_numbers = {
         n for (n,) in db.query(Invoice.invoice_number)
-        .join(Debtor)
-        .filter(Debtor.user_id == current_user.id)
+        .filter(Invoice.user_id == current_user.id)
         .all()
     }
     existing_debtor_emails = {
@@ -226,7 +225,7 @@ def commit_import(
     for row in request.rows:
         savepoint = db.begin_nested()
         try:
-            if db.query(Invoice).filter(Invoice.invoice_number == row.invoice_number).first():
+            if db.query(Invoice).filter(Invoice.invoice_number == row.invoice_number, Invoice.user_id == current_user.id).first():
                 savepoint.rollback()
                 results.append(ImportCommitResult(
                     row_number=row.row_number, status="skipped",
@@ -243,18 +242,6 @@ def commit_import(
                     .first()
                 )
             if debtor is None:
-                # Global email uniqueness (not yet scoped per-user — see
-                # PRODUCTION_READINESS_PLAN.md C3) means another account
-                # could already own this email; surface that clearly
-                # instead of a raw IntegrityError.
-                if db.query(Debtor).filter(Debtor.email == row.debtor_email).first():
-                    savepoint.rollback()
-                    results.append(ImportCommitResult(
-                        row_number=row.row_number, status="error",
-                        detail=f"Debtor email '{row.debtor_email}' is already in use by another account",
-                    ))
-                    error_count += 1
-                    continue
                 debtor = Debtor(
                     user_id=current_user.id,
                     name=row.debtor_name,
@@ -273,6 +260,7 @@ def commit_import(
                 status = InvoiceStatus.due
 
             invoice = Invoice(
+                user_id=current_user.id,
                 debtor_id=debtor.id,
                 invoice_number=row.invoice_number,
                 amount=row.amount,

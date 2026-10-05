@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, Date, ForeignKey, Enum
+from sqlalchemy import Column, String, Integer, Numeric, Date, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
 from .base import Base
@@ -20,11 +20,21 @@ class EscalationTier(str, enum.Enum):
 
 class Invoice(Base):
     __tablename__ = "invoice"
+    __table_args__ = (
+        # Scoped per-user: two different customers both starting their
+        # invoice numbering at "INV-001" must not collide. user_id is
+        # denormalized from debtor.user_id (an invoice's debtor can't
+        # change owners) so this constraint can be expressed directly,
+        # and so every multi-tenant query can filter Invoice by user_id
+        # without a join through Debtor.
+        UniqueConstraint('user_id', 'invoice_number', name='uq_invoice_user_id_invoice_number'),
+    )
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
     debtor_id = Column(String, ForeignKey('debtor.id'), nullable=False)
     debtor = relationship('Debtor', back_populates='invoices')
     reminders = relationship('ReminderLog', back_populates='invoice', cascade="all, delete-orphan")
-    invoice_number = Column(String, nullable=False, unique=True)
+    invoice_number = Column(String, nullable=False)
     amount = Column(Numeric(12,2), nullable=False)
     description = Column(String)
     due_date = Column(Date, nullable=False)

@@ -35,8 +35,9 @@ def create_invoice(request: InvoiceCreate, db: Session = Depends(get_db), curren
     if not debtor:
         raise HTTPException(status_code=404, detail="Debtor not found")
 
-    # Verify invoice number is unique
-    if db.query(Invoice).filter(Invoice.invoice_number == request.invoice_number).first():
+    # Uniqueness is scoped to this user — another customer may legitimately
+    # have their own "INV-001", which is where most invoice numbering starts.
+    if db.query(Invoice).filter(Invoice.invoice_number == request.invoice_number, Invoice.user_id == current_user.id).first():
         raise HTTPException(status_code=400, detail="Invoice number already exists")
 
     status = InvoiceStatus.upcoming
@@ -46,6 +47,7 @@ def create_invoice(request: InvoiceCreate, db: Session = Depends(get_db), curren
         status = InvoiceStatus.due
 
     new_invoice = Invoice(
+        user_id=current_user.id,
         debtor_id=request.debtor_id,
         invoice_number=request.invoice_number,
         amount=request.amount,

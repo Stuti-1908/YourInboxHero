@@ -25,6 +25,7 @@ def _seed_reminder_log(session, count=3):
 
     inv = Invoice(
         id=str(uuid.uuid4()),
+        user_id=debtor.user_id,
         debtor_id=debtor.id,
         invoice_number=f"INV-{uuid.uuid4().hex[:6]}",
         amount=500.00,

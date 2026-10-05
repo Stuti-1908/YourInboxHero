@@ -41,8 +41,9 @@ def create_debtor(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new debtor for the authenticated client."""
-    # Check if email is already in use
-    if db.query(Debtor).filter(Debtor.email == request.email).first():
+    # Uniqueness is scoped to this user — another customer may legitimately
+    # have their own debtor record for the same email address.
+    if db.query(Debtor).filter(Debtor.email == request.email, Debtor.user_id == current_user.id).first():
         raise HTTPException(status_code=400, detail="Debtor with this email already exists")
 
     new_debtor = Debtor(

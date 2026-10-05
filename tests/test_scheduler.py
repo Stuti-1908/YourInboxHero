@@ -51,6 +51,7 @@ def _make_user(session, subscription_status="active", chases_limit=750, chases_u
 def _make_overdue_invoice(session, debtor, escalation_tier, escalation_started_at, last_reminder_sent=None):
     inv = Invoice(
         id=str(uuid.uuid4()),
+        user_id=debtor.user_id,
         debtor_id=debtor.id,
         invoice_number=f"INV-{uuid.uuid4().hex[:6]}",
         amount=500.00,

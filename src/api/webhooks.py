@@ -133,19 +133,20 @@ async def ghl_webhook_receiver(
             parsed_due_date = date.today()  # fallback
         
         inv_number = payload.invoice_number or f"INV-{uuid.uuid4().hex[:6].upper()}"
-        
+
         # Ensure invoice number is unique for this user
-        existing_inv = db.query(Invoice).filter(Invoice.invoice_number == inv_number).first()
+        existing_inv = db.query(Invoice).filter(Invoice.invoice_number == inv_number, Invoice.user_id == user.id).first()
         if existing_inv:
             inv_number = f"{inv_number}-{uuid.uuid4().hex[:4].upper()}"
-        
+
         status = InvoiceStatus.upcoming
         if parsed_due_date < date.today():
             status = InvoiceStatus.overdue
         elif parsed_due_date == date.today():
             status = InvoiceStatus.due
-        
+
         new_invoice = Invoice(
+            user_id=user.id,
             debtor_id=debtor.id,
             invoice_number=inv_number,
             amount=payload.amount,

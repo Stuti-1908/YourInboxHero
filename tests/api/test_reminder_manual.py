@@ -39,7 +39,7 @@ def test_manual_reminder_blocked_at_chase_limit():
         )
         session.add(debtor)
         inv = Invoice(
-            id=str(uuid.uuid4()), debtor_id=debtor_id,
+            id=str(uuid.uuid4()), user_id='test-id', debtor_id=debtor_id,
             invoice_number=f"INV-{uuid.uuid4().hex[:6]}", amount=500.00,
             due_date=date.today() + timedelta(days=5), status=InvoiceStatus.upcoming,
         )

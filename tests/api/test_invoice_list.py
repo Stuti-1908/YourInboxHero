@@ -23,6 +23,7 @@ def _make_debtor(session, name="List Corp"):
 def _make_invoice(session, debtor, due_date, status=InvoiceStatus.upcoming):
     inv = Invoice(
         id=str(uuid.uuid4()),
+        user_id=debtor.user_id,
         debtor_id=debtor.id,
         invoice_number=f"INV-{uuid.uuid4().hex[:6]}",
         amount=750.00,
