@@ -225,6 +225,12 @@ def run_voice_calls(db: Session):
                           debtor_name=debtor.name)
             continue
 
+        if not debtor.voice_call_consent:
+            logger.info("voice_call_skipped_no_consent",
+                       invoice_id=str(inv.id),
+                       debtor_id=debtor.id)
+            continue
+
         user = debtor.user
         if not plan_has_feature(user.subscription_plan, "voice_escalation"):
             logger.info("voice_call_skipped_plan_tier",

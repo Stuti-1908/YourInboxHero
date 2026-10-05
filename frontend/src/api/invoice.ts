@@ -34,6 +34,7 @@ export interface Debtor {
   email: string;
   phone?: string;
   debtor_type: string;
+  voice_call_consent: boolean;
 }
 
 export interface EmailTemplate {
@@ -112,7 +113,7 @@ export const fetchDebtors = async (): Promise<Debtor[]> => {
   return data.items ?? data;
 };
 
-export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string }): Promise<Debtor> => {
+export const createDebtor = async (data: { name: string; email: string; phone?: string; debtor_type: string; voice_call_consent?: boolean }): Promise<Debtor> => {
   const res = await fetch(`${API_BASE}/debtor`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -125,6 +126,23 @@ export const createDebtor = async (data: { name: string; email: string; phone?: 
   if (!res.ok) {
     const errorData = await res.json();
     throw new Error(errorData.detail || 'Failed to create debtor');
+  }
+  return await res.json();
+};
+
+export const updateDebtor = async (id: string, data: { name?: string; phone?: string; voice_call_consent?: boolean }): Promise<Debtor> => {
+  const res = await fetch(`${API_BASE}/debtor/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    window.location.reload();
+  }
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to update debtor');
   }
   return await res.json();
 };

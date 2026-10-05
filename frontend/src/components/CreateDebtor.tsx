@@ -6,6 +6,7 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [voiceCallConsent, setVoiceCallConsent] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -14,10 +15,11 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
     setError('');
     setLoading(true);
     try {
-      await createDebtor({ name, email, phone, debtor_type: 'business' });
+      await createDebtor({ name, email, phone, debtor_type: 'business', voice_call_consent: voiceCallConsent });
       setName('');
       setEmail('');
       setPhone('');
+      setVoiceCallConsent(false);
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'Failed to create debtor');
@@ -44,6 +46,23 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
         <div className="form-group">
           <label>Phone (Optional)</label>
           <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+        </div>
+        <div className="form-group">
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={voiceCallConsent}
+              onChange={(e) => setVoiceCallConsent(e.target.checked)}
+              style={{ marginTop: '3px' }}
+            />
+            <span>
+              This debtor has consented to receive automated phone call reminders.
+              <br />
+              <small style={{ color: 'var(--color-text-light)', fontSize: '0.8rem' }}>
+                Required before voice-call escalation can be used for this debtor — SMS and email reminders are unaffected.
+              </small>
+            </span>
+          </label>
         </div>
         <div className="form-actions">
           <button type="submit" className="btn-primary" disabled={loading}>

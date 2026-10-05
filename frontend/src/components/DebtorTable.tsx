@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchDebtors, deleteDebtor } from '../api/invoice';
+import { fetchDebtors, deleteDebtor, updateDebtor } from '../api/invoice';
 import type { Debtor } from '../api/invoice';
 import './InvoiceTable.css';
 
@@ -23,6 +23,16 @@ export const DebtorTable = () => {
     }
   };
 
+  const handleToggleConsent = async (debtor: Debtor) => {
+    const next = !debtor.voice_call_consent;
+    try {
+      await updateDebtor(debtor.id, { voice_call_consent: next });
+      setDebtors(prev => prev.map(d => d.id === debtor.id ? { ...d, voice_call_consent: next } : d));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="table-container fade-in">
       <div className="table-header">
@@ -36,13 +46,14 @@ export const DebtorTable = () => {
             <th>Email</th>
             <th>Phone</th>
             <th>Type</th>
+            <th>Voice Call Consent</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {debtors.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+              <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                 No debtors found. Add a debtor to get started.
               </td>
             </tr>
@@ -58,8 +69,19 @@ export const DebtorTable = () => {
                   </span>
                 </td>
                 <td>
-                  <button 
-                    className="btn-action" 
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: debtor.phone ? 'pointer' : 'not-allowed', opacity: debtor.phone ? 1 : 0.5 }}>
+                    <input
+                      type="checkbox"
+                      checked={debtor.voice_call_consent}
+                      disabled={!debtor.phone}
+                      onChange={() => handleToggleConsent(debtor)}
+                    />
+                    {debtor.voice_call_consent ? 'Consented' : 'Not consented'}
+                  </label>
+                </td>
+                <td>
+                  <button
+                    className="btn-action"
                     style={{ borderColor: 'var(--color-status-error)', color: 'var(--color-status-error)' }}
                     onClick={() => handleDelete(debtor.id)}
                   >

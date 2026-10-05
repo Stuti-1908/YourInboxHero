@@ -20,7 +20,7 @@ from src.models.invoice import Invoice, InvoiceStatus
 from src.scheduler import run_escalation_sweep, run_sms_reminders, run_voice_calls
 
 
-def _make_debtor(session, name="Scheduler Test Corp", phone=None):
+def _make_debtor(session, name="Scheduler Test Corp", phone=None, voice_call_consent=False):
     d = Debtor(
         user_id='test-id',
         id=str(uuid.uuid4()),
@@ -28,6 +28,7 @@ def _make_debtor(session, name="Scheduler Test Corp", phone=None):
         email=f"{uuid.uuid4().hex[:8]}@example.com",
         phone=phone,
         debtor_type="business",
+        voice_call_consent=voice_call_consent,
     )
     session.add(d)
     session.flush()
@@ -110,7 +111,7 @@ def test_sms_reminders_does_not_crash_reading_last_reminder_sent():
 def test_voice_calls_does_not_crash_reading_last_reminder_sent():
     session = SessionLocal()
     try:
-        debtor = _make_debtor(session, phone="+15551234567")
+        debtor = _make_debtor(session, phone="+15551234567", voice_call_consent=True)
         last_sent = datetime.now(timezone.utc) - timedelta(days=5)
         inv = _make_overdue_invoice(
             session, debtor, escalation_tier="voice",
@@ -127,5 +128,37 @@ def test_voice_calls_does_not_crash_reading_last_reminder_sent():
         # datetime.now(timezone.utc) at scheduler.py's "only call once
         # every 3 days" check.
         run_voice_calls(session)
+    finally:
+        session.close()
+
+
+def test_voice_calls_skips_debtor_without_consent():
+    """A debtor with a phone number but no recorded voice_call_consent must
+    never be called — this is a legal requirement (TCPA-style consent-to-call
+    rules), not just a product preference, so it must fail closed by default."""
+    session = SessionLocal()
+    try:
+        debtor = _make_debtor(session, phone="+15551234567", voice_call_consent=False)
+        inv = _make_overdue_invoice(
+            session, debtor, escalation_tier="voice",
+            escalation_started_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        run_voice_calls(session)
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        # The invoice must be untouched: no call recorded, no chase counted.
+        refreshed = session.query(Invoice).filter(Invoice.id == inv_id).first()
+        assert refreshed.voice_call_count == 0
+        assert refreshed.last_reminder_sent is None
     finally:
         session.close()

@@ -15,6 +15,7 @@ class DebtorCreateRequest(BaseModel):
     email: str
     phone: str = None
     debtor_type: str = "business"
+    voice_call_consent: bool = False
 
 class DebtorResponse(BaseModel):
     id: str
@@ -22,6 +23,7 @@ class DebtorResponse(BaseModel):
     email: str
     phone: str | None
     debtor_type: str
+    voice_call_consent: bool
 
 
 class PaginatedDebtorResponse(BaseModel):
@@ -48,7 +50,8 @@ def create_debtor(
         name=request.name,
         email=request.email,
         phone=request.phone,
-        debtor_type=request.debtor_type
+        debtor_type=request.debtor_type,
+        voice_call_consent=request.voice_call_consent
     )
     db.add(new_debtor)
     db.commit()
@@ -59,7 +62,8 @@ def create_debtor(
         "name": new_debtor.name,
         "email": new_debtor.email,
         "phone": new_debtor.phone,
-        "debtor_type": new_debtor.debtor_type
+        "debtor_type": new_debtor.debtor_type,
+        "voice_call_consent": new_debtor.voice_call_consent
     }
 
 
@@ -97,7 +101,8 @@ def get_debtors(
                 "name": d.name,
                 "email": d.email,
                 "phone": d.phone,
-                "debtor_type": d.debtor_type
+                "debtor_type": d.debtor_type,
+                "voice_call_consent": d.voice_call_consent
             } for d in debtors
         ],
         total=total,
@@ -105,6 +110,46 @@ def get_debtors(
         page_size=page_size,
         total_pages=total_pages
     )
+
+
+class DebtorUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    voice_call_consent: Optional[bool] = None
+
+
+@router.put('/debtor/{debtor_id}', response_model=DebtorResponse)
+def update_debtor(
+    debtor_id: str,
+    request: DebtorUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update a debtor's editable fields — notably voice_call_consent,
+    which is usually granted after the debtor was first added (e.g. once
+    a signed consent form comes back), not at creation time."""
+    debtor = db.query(Debtor).filter(Debtor.id == debtor_id, Debtor.user_id == current_user.id).first()
+    if not debtor:
+        raise HTTPException(status_code=404, detail="Debtor not found or unauthorized")
+
+    if request.name is not None:
+        debtor.name = request.name
+    if request.phone is not None:
+        debtor.phone = request.phone
+    if request.voice_call_consent is not None:
+        debtor.voice_call_consent = request.voice_call_consent
+
+    db.commit()
+    db.refresh(debtor)
+
+    return {
+        "id": debtor.id,
+        "name": debtor.name,
+        "email": debtor.email,
+        "phone": debtor.phone,
+        "debtor_type": debtor.debtor_type,
+        "voice_call_consent": debtor.voice_call_consent
+    }
 
 
 @router.delete('/debtor/{debtor_id}', status_code=200)
