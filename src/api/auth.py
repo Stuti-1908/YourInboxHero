@@ -21,6 +21,7 @@ from src.auth import (
 )
 from src.rate_limit import limiter
 from src.services.account_notifications import send_verification_email
+from src.services.secrets import encrypt_secret
 import structlog
 from pydantic import BaseModel
 
@@ -215,7 +216,13 @@ def get_me(current_user: User = Depends(get_current_user)):
         "smtp_host": current_user.smtp_host,
         "smtp_port": current_user.smtp_port,
         "smtp_username": current_user.smtp_username,
-        "smtp_password": current_user.smtp_password,
+        # smtp_password is deliberately never returned, encrypted or not —
+        # the frontend only ever needs to know a provider IS connected
+        # (via smtp_host being set), never the credential itself. Returning
+        # it even encrypted would let a stolen JWT round-trip it back
+        # through update_me and have the server re-encrypt/accept it as
+        # if the user had typed it, and there's no legitimate UI need to
+        # display it.
         "smtp_from_email": current_user.smtp_from_email,
         "webhook_secret": current_user.webhook_secret,
         "subscription_plan": current_user.subscription_plan,
@@ -230,21 +237,35 @@ def update_me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Re-fetch within this request's own db session rather than mutating
+    # current_user directly — current_user may come from a session other
+    # than db's (e.g. a test overriding get_current_user independently of
+    # get_db; FastAPI's per-request dependency caching keeps them in sync
+    # in normal request handling, but nothing guarantees that in general),
+    # and db.commit()/db.refresh() on a detached instance raises
+    # InvalidRequestError rather than silently doing the wrong thing.
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     if settings.company_name is not None:
-        current_user.company_name = settings.company_name
+        user.company_name = settings.company_name
     if settings.logo_base64 is not None:
-        current_user.logo_base64 = settings.logo_base64
+        user.logo_base64 = settings.logo_base64
     if settings.smtp_host is not None:
-        current_user.smtp_host = settings.smtp_host
+        user.smtp_host = settings.smtp_host
     if settings.smtp_port is not None:
-        current_user.smtp_port = settings.smtp_port
+        user.smtp_port = settings.smtp_port
     if settings.smtp_username is not None:
-        current_user.smtp_username = settings.smtp_username
+        user.smtp_username = settings.smtp_username
     if settings.smtp_password is not None:
-        current_user.smtp_password = settings.smtp_password
+        # An empty string means "disconnect" (see EmailProviders.tsx's
+        # handleDisconnect) — store it as-is rather than encrypting "",
+        # since encrypt_secret("") would produce a real ciphertext that
+        # decrypts back to "", adding no value and a wasted encrypt call.
+        user.smtp_password = encrypt_secret(settings.smtp_password) if settings.smtp_password else ""
     if settings.smtp_from_email is not None:
-        current_user.smtp_from_email = settings.smtp_from_email
-        
+        user.smtp_from_email = settings.smtp_from_email
+
     db.commit()
-    db.refresh(current_user)
     return {"msg": "Settings updated successfully"}

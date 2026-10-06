@@ -346,3 +346,139 @@ def test_resend_verification_does_nothing_for_already_verified_account(_mock_ver
     client = TestClient(app)
     client.post("/users/resend-verification", json={"username": username})
     _mock_verification_email.assert_not_called()
+
+
+def test_users_me_never_returns_smtp_password():
+    """GET /users/me must never include smtp_password, encrypted or not —
+    there's no legitimate UI need to display it, and returning it would
+    let a stolen JWT round-trip it back through PUT /users/me."""
+    from src.auth import get_current_user
+    from src.services.secrets import encrypt_secret
+
+    session = SessionLocal()
+    try:
+        username = f"smtpuser_{uuid.uuid4().hex[:8]}@example.com"
+        db_user = User(
+            username=username, hashed_password=get_password_hash("pw"),
+            email_verified=True, smtp_host="smtp.gmail.com", smtp_port="587",
+            smtp_username=username, smtp_password=encrypt_secret("real-app-password"),
+            subscription_status="active",
+        )
+        session.add(db_user)
+        session.commit()
+        user_id = db_user.id
+    finally:
+        session.close()
+
+    # get_me reads straight off current_user (no re-fetch), so the override
+    # needs the real DB-persisted row — including smtp_host — the same way
+    # the real get_current_user would return it, not a hand-built stand-in
+    # missing those fields.
+    def _load_current_user():
+        session = SessionLocal()
+        return session.query(User).filter_by(id=user_id).first()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = _load_current_user
+        client = TestClient(app)
+        resp = client.get("/users/me")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "smtp_password" not in body
+        assert body["smtp_host"] == "smtp.gmail.com"  # non-secret SMTP fields still returned
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_update_me_encrypts_smtp_password_at_rest():
+    from src.auth import get_current_user
+
+    session = SessionLocal()
+    try:
+        username = f"smtpupdate_{uuid.uuid4().hex[:8]}@example.com"
+        db_user = User(
+            username=username, hashed_password=get_password_hash("pw"),
+            email_verified=True, subscription_status="active",
+        )
+        session.add(db_user)
+        session.commit()
+        user_id = db_user.id
+    finally:
+        session.close()
+
+    # update_me re-fetches the user within its own db session by ID, so the
+    # override here can safely be a detached object — it's only used for
+    # its .id (and route auth), not mutated/refreshed directly.
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={
+            "smtp_host": "smtp.gmail.com", "smtp_port": "587",
+            "smtp_username": username, "smtp_password": "plaintext-app-password",
+        })
+        assert resp.status_code == 200
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        # Stored value must not be the plaintext the client sent.
+        assert user.smtp_password != "plaintext-app-password"
+        assert user.smtp_password is not None
+    finally:
+        session.close()
+
+
+def test_update_me_disconnect_smtp_stores_empty_not_encrypted_empty():
+    from src.auth import get_current_user
+    from src.services.secrets import encrypt_secret
+
+    session = SessionLocal()
+    try:
+        username = f"smtpdisconnect_{uuid.uuid4().hex[:8]}@example.com"
+        db_user = User(
+            username=username, hashed_password=get_password_hash("pw"),
+            email_verified=True, subscription_status="active",
+            smtp_host="smtp.gmail.com", smtp_password=encrypt_secret("old-password"),
+        )
+        session.add(db_user)
+        session.commit()
+        user_id = db_user.id
+    finally:
+        session.close()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={
+            "smtp_host": "", "smtp_port": "", "smtp_username": "", "smtp_password": "",
+        })
+        assert resp.status_code == 200
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        assert user.smtp_password == ""
+    finally:
+        session.close()

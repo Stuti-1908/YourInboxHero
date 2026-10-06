@@ -11,6 +11,10 @@ import tempfile
 _db_file = tempfile.mktemp(suffix=".db")
 os.environ["DATABASE_URL"] = f"sqlite:///{_db_file}"
 os.environ["SENDGRID_API_KEY"] = "SG.test"
+# A real Fernet key so tests that touch SMTP password encryption actually
+# exercise it rather than hitting the "not configured" RuntimeError.
+from cryptography.fernet import Fernet as _Fernet
+os.environ["ENCRYPTION_KEY"] = _Fernet.generate_key().decode()
 
 # Now import and create tables (this import triggers src/db.py to create the engine)
 from src.db import engine  # noqa: E402

@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.services.email import send_reminder_email
+from src.services.secrets import encrypt_secret
 from datetime import date
 
 
@@ -12,7 +13,10 @@ def _make_dummy_invoice(plan='scale', smtp_configured=False):
         smtp_host = 'smtp.example.com' if smtp_configured else None
         smtp_port = '587' if smtp_configured else None
         smtp_username = 'user@example.com' if smtp_configured else None
-        smtp_password = 'hunter2' if smtp_configured else None
+        # Stored at rest encrypted — email.py decrypts it before use, so
+        # the fixture must mirror what's actually in the DB, not a
+        # plaintext value a real row would never contain.
+        smtp_password = encrypt_secret('hunter2') if smtp_configured else None
         smtp_from_email = None
 
     class DummyDebtor:
@@ -108,6 +112,9 @@ def test_growth_plan_uses_saved_smtp_when_configured(monkeypatch):
         mock_smtp.assert_called_once()
         mock_post.assert_not_called()
         assert result["method"] == "smtp"
+        # The stored value is encrypted; _send_via_smtp must receive the
+        # decrypted plaintext, not the ciphertext itself.
+        assert mock_smtp.call_args.kwargs['password'] == 'hunter2'
 
 
 def test_starter_plan_ignores_saved_custom_template(monkeypatch):

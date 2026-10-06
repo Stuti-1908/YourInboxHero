@@ -13,6 +13,7 @@ from src.config.settings import get_settings
 from src.db import SessionLocal
 from src.models.email_template import EmailTemplate
 from src.services.plan_features import plan_has_feature
+from src.services.secrets import decrypt_secret
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -165,13 +166,14 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
         html_body = render_template(invoice)
 
     # Try custom SMTP first, if entitled
-    if has_custom_smtp and user.smtp_host and user.smtp_port and user.smtp_username and user.smtp_password:
+    smtp_password = decrypt_secret(user.smtp_password) if has_custom_smtp else None
+    if has_custom_smtp and user.smtp_host and user.smtp_port and user.smtp_username and smtp_password:
         try:
             result = _send_via_smtp(
                 host=user.smtp_host,
                 port=int(user.smtp_port),
                 username=user.smtp_username,
-                password=user.smtp_password,
+                password=smtp_password,
                 from_email=user.smtp_from_email or user.smtp_username,
                 to_email=invoice.debtor.email,
                 subject=subject,

@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     # inactive (no network calls, no overhead). Set SENTRY_DSN to enable.
     sentry_dsn: Optional[str] = Field(default=None, description="Sentry DSN for error tracking")
 
+    # Symmetric encryption key for at-rest secrets we must later decrypt and
+    # use ourselves (currently: customer SMTP passwords) — NOT for user
+    # passwords, which stay one-way hashed via passlib. Generate with:
+    # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # REQUIRED in production (validate_production_settings enforces this);
+    # losing this key makes every encrypted value permanently undecryptable,
+    # so back it up the same way you would SECRET_KEY.
+    encryption_key: Optional[str] = Field(default=None, description="Fernet key for encrypting stored secrets (e.g. SMTP passwords)")
+
     # Directory client-uploaded documents are written to. Must be a path
     # backed by a persistent volume in production (see docker-compose.yml's
     # uploaded_documents volume) or uploads are lost on every redeploy.
@@ -130,3 +139,5 @@ def validate_production_settings(settings: Settings) -> None:
             raise RuntimeError("RESEND_API_KEY required in production")
         if settings.cors_origins == ["http://localhost:5173", "http://localhost:3000"]:
             raise RuntimeError("CORS_ORIGINS must include production frontend domain")
+        if not settings.encryption_key:
+            raise RuntimeError("ENCRYPTION_KEY required in production (used to encrypt stored SMTP passwords)")
