@@ -4,7 +4,11 @@ on: [push, pull_request]
 
 env:
   PYTHON_VERSION: '3.11'
-  NODE_VERSION: '18'
+  # frontend/package.json declares engines.node: "^20.19.0 || >=22.12.0"
+  # (Vite 8 / oxlint 1.78 both require it) -- CI was pinned to 18, which
+  # doesn't satisfy that range and is why oxlint's native binary failed to
+  # load here (its 18.x platform build was dropped upstream).
+  NODE_VERSION: '22'
 
 jobs:
   lint:
@@ -57,7 +61,11 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+      # Explicit +psycopg2 to match what's actually installed
+      # (requirements.txt has psycopg2-binary, not psycopg v3) and what
+      # production uses -- a plain postgresql:// URL makes SQLAlchemy
+      # default to the psycopg3 driver, which isn't installed here.
+      DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/testdb
       SECRET_KEY: test-secret-key-for-testing-only-min-32-chars-long
       SENDGRID_API_KEY: SG.test
       ENVIRONMENT: test
@@ -108,6 +116,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          # actions/setup-node resolves cache-dependency-path relative to the
+          # repo root, not this job's `working-directory: frontend` default
+          # -- without this it looked for package-lock.json at the repo
+          # root (where it doesn't exist) and failed before npm ci ever ran.
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install deps
         run: npm ci
@@ -128,6 +141,13 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      # github/codeql-action/upload-sarif needs security-events: write to
+      # post results to the repo's Security tab -- GITHUB_TOKEN defaults to
+      # read-only for this scope, which is exactly the "Resource not
+      # accessible by integration" error this job was failing with.
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
