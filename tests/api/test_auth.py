@@ -89,6 +89,70 @@ def test_login_failure():
     assert response.status_code == 401
 
 
+def test_refresh_issues_new_token_and_revokes_old_one():
+    """M8: an active session can slide its 30-minute expiry forward."""
+    session = SessionLocal()
+    try:
+        test_username = f"refresh_{uuid.uuid4().hex[:6]}"
+        test_password = "test123"
+        db_user = User(
+            username=test_username,
+            hashed_password=get_password_hash(test_password),
+            email_verified=True,
+        )
+        session.add(db_user)
+        session.commit()
+    finally:
+        session.close()
+
+    client = TestClient(app)
+    login = client.post("/token", data={"username": test_username, "password": test_password})
+    old_token = login.json()["access_token"]
+
+    refresh = client.post("/refresh", headers={"Authorization": f"Bearer {old_token}"})
+    assert refresh.status_code == 200
+    new_token = refresh.json()["access_token"]
+    assert new_token != old_token
+
+    # The old token is now revoked...
+    old_check = client.get("/users/me", headers={"Authorization": f"Bearer {old_token}"})
+    assert old_check.status_code == 401
+
+    # ...but the new one works.
+    new_check = client.get("/users/me", headers={"Authorization": f"Bearer {new_token}"})
+    assert new_check.status_code == 200
+
+
+def test_refresh_rejects_already_revoked_token():
+    session = SessionLocal()
+    try:
+        test_username = f"refresh2_{uuid.uuid4().hex[:6]}"
+        test_password = "test123"
+        db_user = User(
+            username=test_username,
+            hashed_password=get_password_hash(test_password),
+            email_verified=True,
+        )
+        session.add(db_user)
+        session.commit()
+    finally:
+        session.close()
+
+    client = TestClient(app)
+    login = client.post("/token", data={"username": test_username, "password": test_password})
+    token = login.json()["access_token"]
+
+    client.post("/logout", headers={"Authorization": f"Bearer {token}"})
+    refresh = client.post("/refresh", headers={"Authorization": f"Bearer {token}"})
+    assert refresh.status_code == 401
+
+
+def test_refresh_rejects_missing_token():
+    client = TestClient(app)
+    response = client.post("/refresh")
+    assert response.status_code == 401
+
+
 def test_register_without_paid_plan_is_rejected():
     """A signup with no completed Stripe payment and no admin bypass must be
     refused — there is nothing for the account to have paid access to."""

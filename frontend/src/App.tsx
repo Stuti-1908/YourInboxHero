@@ -17,7 +17,8 @@ import { CreateDocumentClient } from './components/CreateDocumentClient';
 import { PaymentSuccess } from './components/PaymentSuccess';
 import { PublicDocumentUpload } from './components/PublicDocumentUpload';
 import { VerifyEmail } from './components/VerifyEmail';
-import { logout, getCompanyName } from './api/invoice';
+import { logout, getCompanyName, refreshToken } from './api/invoice';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import './App.css';
 
@@ -30,6 +31,19 @@ const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const companyName = getCompanyName();
+
+  // Silently slide the 30-minute token expiry forward every 10 minutes
+  // while the dashboard is open (M8), so an actively-working user isn't
+  // logged out mid-session. If the token has already expired (e.g. the
+  // laptop was asleep past the 30-minute window), refreshToken() fails
+  // harmlessly and the next real API call's existing 401 handling
+  // (localStorage.removeItem('token') + reload) takes over as before.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshToken();
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const activeModule = location.pathname.startsWith('/documents') ? 'documents' : 'money';
   const isMoneyTab = (tab: string) => location.pathname === `/dashboard/${tab}`;
@@ -102,7 +116,7 @@ const DashboardLayout = () => {
               <button className="nav-tab" onClick={() => navigate('/dashboard/settings')}>Settings</button>
             </>
           )}
-          <button className="nav-logout" onClick={() => { logout(); navigate('/'); }}>Sign Out</button>
+          <button className="nav-logout" onClick={() => { logout().finally(() => navigate('/')); }}>Sign Out</button>
         </div>
       </header>
 
@@ -150,26 +164,28 @@ function App() {
   // logged in on. Hoisted above the authed/unauthed branches below so
   // neither can shadow them.
   return (
-    <Routes>
-      <Route path="/upload/:token" element={<PublicDocumentUpload />} />
-      <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route
-        path="/*"
-        element={
-          authed ? (
-            <DashboardLayout />
-          ) : (
-            <Routes>
-              <Route path="/" element={<LandingPage onGetStarted={() => navigate('/sign-up')} onSignIn={() => navigate('/sign-in')} />} />
-              <Route path="/sign-in" element={<Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => navigate('/sign-up')} />} />
-              <Route path="/sign-up" element={<Register onSwitchToLogin={() => navigate('/sign-in')} onViewPricing={() => navigate('/#pricing')} />} />
-              <Route path="/payment-success" element={<PaymentSuccess onGoToRegister={() => navigate('/sign-up')} onGoToLogin={() => navigate('/sign-in')} />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          )
-        }
-      />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/upload/:token" element={<PublicDocumentUpload />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route
+          path="/*"
+          element={
+            authed ? (
+              <DashboardLayout />
+            ) : (
+              <Routes>
+                <Route path="/" element={<LandingPage onGetStarted={() => navigate('/sign-up')} onSignIn={() => navigate('/sign-in')} />} />
+                <Route path="/sign-in" element={<Login onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => navigate('/sign-up')} />} />
+                <Route path="/sign-up" element={<Register onSwitchToLogin={() => navigate('/sign-in')} onViewPricing={() => navigate('/#pricing')} />} />
+                <Route path="/payment-success" element={<PaymentSuccess onGoToRegister={() => navigate('/sign-up')} onGoToLogin={() => navigate('/sign-in')} />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            )
+          }
+        />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

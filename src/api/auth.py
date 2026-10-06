@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
+import uuid
 
 from src.db import get_db
 from src.models.user import User, generate_email_verification_token
@@ -17,7 +18,8 @@ from src.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     revoke_token,
     oauth2_scheme,
-    get_password_hash
+    get_password_hash,
+    get_current_user,
 )
 from src.rate_limit import limiter
 from src.services.account_notifications import send_verification_email
@@ -62,6 +64,40 @@ async def login_for_access_token(
 def logout(token: str = Depends(oauth2_scheme)):
     revoke_token(token)
     return {"msg": "Successfully logged out"}
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(
+    token: str = Depends(oauth2_scheme),
+    current_user: User = Depends(get_current_user),
+):
+    """Issue a fresh token for a still-valid session, sliding the 30-minute
+    expiry forward without requiring a separate long-lived refresh token.
+
+    get_current_user already rejects an expired or revoked token, so by the
+    time we get here the caller has proven they hold a currently-valid
+    session; we revoke it and hand back a new one so the frontend can keep
+    an active user logged in across the 30-minute window (M8) without
+    storing a second, longer-lived credential that would itself need its
+    own revocation/rotation story.
+    """
+    revoke_token(token)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    new_token = create_access_token(
+        data={
+            "sub": current_user.username,
+            "company_name": current_user.company_name,
+            # A refresh issued within the same second as login (or a prior
+            # refresh) would otherwise encode an identical payload and exp,
+            # producing a byte-for-byte identical JWT — harmless since it's
+            # still a valid, non-revoked token, but it defeats the point of
+            # "issuing a new token" and would make the old/new pair
+            # indistinguishable in logs. A random jti guarantees distinct
+            # tokens on every call regardless of timing.
+            "jti": uuid.uuid4().hex,
+        },
+        expires_delta=access_token_expires,
+    )
+    return {"access_token": new_token, "token_type": "bearer"}
 
 # Debug endpoint to create a test user easily in dev
 class UserCreate(BaseModel):

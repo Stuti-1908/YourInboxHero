@@ -81,6 +81,7 @@ export const pauseInvoice = async (id: string): Promise<void> => {
     method: 'POST',
     headers: getAuthHeaders()
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to pause invoice');
 };
 
@@ -89,6 +90,7 @@ export const resumeInvoice = async (id: string): Promise<{ status: string }> => 
     method: 'POST',
     headers: getAuthHeaders()
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to resume invoice');
   return await res.json();
 };
@@ -98,6 +100,7 @@ export const markInvoicePaid = async (id: string): Promise<void> => {
     method: 'POST',
     headers: getAuthHeaders()
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to mark invoice as paid');
 };
 
@@ -165,6 +168,7 @@ export const createInvoice = async (data: { debtor_id: string; invoice_number: s
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Failed to create invoice');
@@ -250,9 +254,43 @@ export const getCompanyName = (): string => {
     return 'YourInboxHero';
   }
 };
-export const logout = () => {
+export const logout = async (): Promise<void> => {
+  const token = localStorage.getItem('token');
   localStorage.removeItem('token');
   localStorage.removeItem('company_name');
+  if (!token) return;
+  // Best-effort: revoke the token server-side too (M8), so a token copied
+  // out of localStorage before logout can't still be used elsewhere. If
+  // this fails (e.g. already offline), the local state is cleared either
+  // way and the token will simply expire on its own in <=30 minutes.
+  try {
+    await fetch(`${API_BASE}/logout`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+  } catch (e) {
+    // ignore — local logout already happened above
+  }
+};
+
+// Refreshes the current token for a still-active session, sliding the
+// 30-minute expiry forward (M8) so a user actively using the app isn't
+// logged out mid-session. Called periodically from App.tsx while authed.
+export const refreshToken = async (): Promise<boolean> => {
+  const token = localStorage.getItem('token');
+  if (!token) return false;
+  try {
+    const res = await fetch(`${API_BASE}/refresh`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    localStorage.setItem('token', data.access_token);
+    return true;
+  } catch (e) {
+    return false;
+  }
 };
 
 export const downloadInvoicePdf = async (invoiceId: string): Promise<void> => {
@@ -375,6 +413,7 @@ export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Pr
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to create document client');
@@ -395,6 +434,7 @@ export const createDocumentRequest = async (data: { client_id: string; title: st
     headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to create document request');
@@ -407,6 +447,7 @@ export const deleteDocumentRequest = async (id: string): Promise<void> => {
     method: 'DELETE',
     headers: getAuthHeaders()
   });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to delete document request');
 };
 
