@@ -43,7 +43,16 @@ class User(Base):
     # Tracks whether each usage-limit warning email has already gone out
     # this billing cycle, so a customer sitting above a threshold doesn't
     # get the same warning on every single send. Both reset to False
-    # whenever chases_used resets (registration, and monthly renewal via
-    # the invoice.payment_succeeded webhook).
+    # whenever chases_used resets (registration, monthly renewal via the
+    # invoice.payment_succeeded webhook, and the admin/invite monthly
+    # reset below).
     usage_warning_80_sent = Column(Boolean, nullable=False, default=False)
     usage_limit_reached_sent = Column(Boolean, nullable=False, default=False)
+    # Stripe-billed accounts get chases_used reset by invoice.payment_succeeded
+    # (billing_reason=subscription_cycle). Admin/invite-granted accounts have
+    # no Stripe subscription and so never receive that webhook — without this,
+    # they'd permanently cap out at their first month's usage. Tracks the last
+    # reset so the daily sweep's reset_admin_invite_usage step (see
+    # src/services/account_notifications.py) only resets once per monthly
+    # anniversary of subscription_started_at, not every time it runs.
+    usage_reset_at = Column(TIMESTAMP(timezone=True), nullable=True)

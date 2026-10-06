@@ -291,6 +291,8 @@ def run_daily_sweep():
         # Each step is isolated: a failure in one (e.g. email provider
         # outage) must not prevent the others from running, since they
         # cover different invoices/channels.
+        from src.services.account_notifications import reset_admin_invite_usage
+
         steps = [
             ("overdue_transition", lambda: transition_overdue(db)),
             ("pre_due_reminders", lambda: process_due_reminders() if settings.reminders_enabled
@@ -298,12 +300,15 @@ def run_daily_sweep():
             ("escalation_sweep", lambda: run_escalation_sweep(db)),
             ("sms_reminders", lambda: run_sms_reminders(db)),
             ("voice_calls", lambda: run_voice_calls(db)),
+            ("admin_invite_usage_reset", lambda: reset_admin_invite_usage(db)),
         ]
         for step_name, step_fn in steps:
             try:
                 result = step_fn()
                 if step_name == "overdue_transition":
                     logger.info("overdue_transition_completed", count=result)
+                elif step_name == "admin_invite_usage_reset" and result:
+                    logger.info("admin_invite_usage_reset_completed", count=result)
             except Exception as e:
                 logger.error(f"daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
 

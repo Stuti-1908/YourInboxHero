@@ -8,6 +8,7 @@ from src.db import get_db
 from src.models.user import User
 from src.models.debtor import Debtor
 from src.models.invoice import Invoice, InvoiceStatus
+from src.services.secrets import decrypt_secret
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, date
@@ -85,11 +86,12 @@ async def ghl_webhook_receiver(
         raise HTTPException(status_code=402, detail="Subscription is not active")
 
     # 2. Verify HMAC signature (if user has GHL configured)
-    if user.ghl_webhook_signing_secret:
+    signing_secret = decrypt_secret(user.ghl_webhook_signing_secret) if user.ghl_webhook_signing_secret else None
+    if signing_secret:
         # Get raw body for signature verification
         body = await request.body()
-        
-        if not verify_ghl_signature(body, x_ghl_signature or "", user.ghl_webhook_signing_secret):
+
+        if not verify_ghl_signature(body, x_ghl_signature or "", signing_secret):
             logger.warning(
                 "ghl_webhook_invalid_signature",
                 user_id=user.id,
