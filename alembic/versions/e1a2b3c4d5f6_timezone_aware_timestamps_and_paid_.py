@@ -12,6 +12,18 @@ unnoticed.
 Also adds 'voice' to the Channel enum (reminder_log.channel) -- it was
 missing, even though voice calls are a real escalation tier.
 
+On production, document_request/pending_subscriptions/etc. already
+existed at this point in history (created by src/app.py's old, unguarded
+create_all() call, before a225ef8d6e70/M1 made that dev-only and gave
+them a real migration far later in this chain). A genuinely fresh
+database -- CI's, or a disaster-recovery rebuild per docs/runbook.md --
+runs every migration in order from scratch and hits this one BEFORE
+a225ef8d6e70 creates those tables, so the unconditional ALTER TABLE
+below fails with UndefinedTable. Guarded with a to_regclass existence
+check so this migration is a no-op for a table that doesn't exist yet
+on a fresh DB, while still converting it on production (where it
+already exists here).
+
 Revision ID: e1a2b3c4d5f6
 Revises: c5c1d8c4b2bf
 Create Date: 2026-10-02 00:00:00.000000
@@ -48,9 +60,18 @@ TZ_COLUMNS = [
 
 def upgrade() -> None:
     for table, column in TZ_COLUMNS:
+        # document_request/pending_subscriptions don't exist yet on a
+        # fresh database at this point in the chain (see module docstring)
+        # -- to_regclass returns NULL for a table that doesn't exist,
+        # letting this skip cleanly instead of raising UndefinedTable.
+        # invoice/reminder_log/users always exist this early, so this is
+        # a no-op guard for them (the condition is always true).
         op.execute(
-            f'ALTER TABLE "{table}" ALTER COLUMN "{column}" '
-            f'TYPE TIMESTAMP WITH TIME ZONE USING "{column}" AT TIME ZONE \'UTC\''
+            f"DO $$ BEGIN "
+            f"IF to_regclass('public.{table}') IS NOT NULL THEN "
+            f"ALTER TABLE \"{table}\" ALTER COLUMN \"{column}\" "
+            f"TYPE TIMESTAMP WITH TIME ZONE USING \"{column}\" AT TIME ZONE 'UTC'; "
+            f"END IF; END $$;"
         )
 
     # ALTER TYPE ... ADD VALUE cannot run inside a transaction block on
