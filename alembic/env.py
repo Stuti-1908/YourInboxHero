@@ -21,7 +21,19 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.base import Base
-from src.models import debtor, invoice, reminder, user
+# Every model must be imported here, or Alembic's autogenerate has no way
+# to know those tables are supposed to exist -- it reflects the live DB,
+# compares it against Base.metadata, and anything not registered in
+# metadata (because its model was never imported) looks like drift to be
+# dropped. This import list silently missing 6 models is exactly how
+# document_client/email_template/pending_subscription/document_request/
+# processed_stripe_event/sweep_run went untracked for so long even after
+# src/app.py's own model-import list (a separate, convenience-only list
+# for create_all()) was more complete.
+from src.models import (
+    debtor, invoice, reminder, user, email_template, pending_subscription,
+    document_client, document_request, processed_stripe_event, sweep_run,
+)
 
 target_metadata = Base.metadata
 
