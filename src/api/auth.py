@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 from src.db import get_db
-from src.models.user import User
+from src.models.user import User, generate_email_verification_token
 from src.models.pending_subscription import PendingSubscription
 from src.config.settings import get_settings
 from src.auth import (
@@ -20,7 +20,11 @@ from src.auth import (
     get_password_hash
 )
 from src.rate_limit import limiter
+from src.services.account_notifications import send_verification_email
+import structlog
 from pydantic import BaseModel
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -41,6 +45,11 @@ async def login_for_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -115,13 +124,74 @@ async def register_user(
 
     db.commit()
     db.refresh(db_user)
+
+    try:
+        send_verification_email(db_user)
+    except Exception as exc:
+        # The account exists either way (dropping it here would also lose
+        # the plan/pending-subscription linkage just applied above). Log
+        # loudly -- Sentry will surface this -- but still tell the caller
+        # plainly, since the user otherwise has no way to know verification
+        # never went out and will be stuck unable to log in.
+        logger.error("verification_email_send_failed", user_id=db_user.id, error=str(exc))
+        return {
+            "id": db_user.id,
+            "username": db_user.username,
+            "company_name": db_user.company_name,
+            "subscription_plan": db_user.subscription_plan,
+            "subscription_status": db_user.subscription_status,
+            "verification_email_sent": False,
+        }
+
     return {
         "id": db_user.id,
         "username": db_user.username,
         "company_name": db_user.company_name,
         "subscription_plan": db_user.subscription_plan,
         "subscription_status": db_user.subscription_status,
+        "verification_email_sent": True,
     }
+
+
+@router.post("/users/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """Public — the link clicked from the verification email. Query-param
+    (not a path segment) to match how the frontend route reads it, and
+    because it's a one-time bearer token, not a resource identifier."""
+    user = db.query(User).filter(User.email_verification_token == token).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+    if user.email_verified:
+        return {"msg": "Email already verified. You can log in."}
+
+    user.email_verified = True
+    user.email_verification_token = None  # single-use
+    db.commit()
+    return {"msg": "Email verified successfully. You can now log in."}
+
+
+class ResendVerificationRequest(BaseModel):
+    username: str
+
+
+@router.post("/users/resend-verification")
+@limiter.limit("3/minute")
+def resend_verification(request: Request, data: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """Public — lets a user request a fresh verification email if the
+    first one was lost, expired from their inbox view, or never arrived.
+    Always returns the same response regardless of whether the email
+    exists, so this can't be used to enumerate registered accounts."""
+    user = db.query(User).filter(User.username == data.username).first()
+    if user and not user.email_verified:
+        if not user.email_verification_token:
+            user.email_verification_token = generate_email_verification_token()
+            db.commit()
+        try:
+            send_verification_email(user)
+        except Exception as exc:
+            logger.error("resend_verification_email_failed", user_id=user.id, error=str(exc))
+    return {"msg": "If that email is registered and unverified, a new verification link has been sent."}
+
 
 from src.auth import get_current_user
 

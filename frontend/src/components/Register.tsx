@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { register, RegistrationError } from '../api/invoice';
+import { register, resendVerificationEmail, RegistrationError } from '../api/invoice';
 import './Login.css'; // Reusing Login CSS for the card style
 
-export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: { onRegisterSuccess: () => void, onSwitchToLogin: () => void, onViewPricing?: () => void }) => {
+export const Register = ({ onSwitchToLogin, onViewPricing }: { onSwitchToLogin: () => void, onViewPricing?: () => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -11,6 +11,8 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
   const [error, setError] = useState('');
   const [needsPlan, setNeedsPlan] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [registered, setRegistered] = useState(false);
+  const [resendStatus, setResendStatus] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +21,7 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
     setNeedsPlan(false);
     try {
       await register(username, password, companyName, inviteCode);
-      onRegisterSuccess();
+      setRegistered(true);
     } catch (err: any) {
       setError(err.message || 'Registration failed');
       setNeedsPlan(err instanceof RegistrationError && err.status === 402);
@@ -27,6 +29,41 @@ export const Register = ({ onRegisterSuccess, onSwitchToLogin, onViewPricing }: 
       setLoading(false);
     }
   };
+
+  const handleResend = async () => {
+    setResendStatus('Sending...');
+    try {
+      await resendVerificationEmail(username);
+      setResendStatus('If that email is registered and unverified, a new link has been sent.');
+    } catch {
+      setResendStatus('Something went wrong — please try again in a moment.');
+    }
+  };
+
+  if (registered) {
+    return (
+      <div className="login-container fade-in">
+        <div className="login-card">
+          <div className="login-brand">
+            <h1>YourInbox<span>Hero</span></h1>
+          </div>
+          <h3 style={{ marginTop: 0 }}>Check your email</h3>
+          <p style={{ color: 'var(--color-text-light)' }}>
+            We've sent a verification link to <strong>{username}</strong>. Click it to activate your account, then sign in.
+          </p>
+          <div style={{ marginTop: '16px' }}>
+            <button type="button" className="btn-login" onClick={handleResend}>
+              Resend verification email
+            </button>
+            {resendStatus && <p style={{ color: 'var(--color-text-light)', fontSize: '0.85rem', marginTop: '8px' }}>{resendStatus}</p>}
+          </div>
+          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.9rem', color: 'var(--color-text-light)' }}>
+            Already verified? <span onClick={onSwitchToLogin} style={{ color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}>Sign in here</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-container fade-in">

@@ -7,12 +7,22 @@ from .base import Base
 def generate_webhook_secret():
     return f"wh_sec_{secrets.token_hex(16)}"
 
+def generate_email_verification_token():
+    return secrets.token_urlsafe(32)
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     company_name = Column(String, nullable=True)
+    # Closes a real account-takeover window: without this, anyone who knows
+    # an ADMIN_EMAILS address or a customer's already-paid email (via a
+    # parked PendingSubscription) could register it themselves before its
+    # real owner does, since registration never previously confirmed the
+    # registrant actually controls that inbox.
+    email_verified = Column(Boolean, nullable=False, default=False)
+    email_verification_token = Column(String, nullable=True, default=generate_email_verification_token)
     logo_base64 = Column(String, nullable=True)
     smtp_host = Column(String, nullable=True)
     smtp_port = Column(String, nullable=True)

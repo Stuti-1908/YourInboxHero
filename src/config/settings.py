@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     stripe_webhook_secret: Optional[str] = Field(default=None, description="Signing secret for verifying Stripe webhook events")
     stripe_success_url: str = Field(default="http://localhost:5173/payment-success", description="Redirect after successful Checkout")
     stripe_cancel_url: str = Field(default="http://localhost:5173/", description="Redirect if Checkout is cancelled")
+
+    # Base URL of the deployed frontend — used to build links sent in emails
+    # (e.g. the email-verification link), which must point at the frontend,
+    # not this API.
+    frontend_url: str = Field(default="http://localhost:5173", description="Base URL of the deployed frontend")
     
     # Environment
     environment: str = Field(default="development", description="development|staging|production")

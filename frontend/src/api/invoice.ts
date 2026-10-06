@@ -183,7 +183,10 @@ export const login = async (username: string, password: string): Promise<string>
     body: formData.toString()
   });
 
-  if (!res.ok) throw new Error('Invalid credentials');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Invalid credentials');
+  }
   const data = await res.json();
   localStorage.setItem('token', data.access_token);
   return data.access_token;
@@ -197,7 +200,7 @@ export class RegistrationError extends Error {
   }
 }
 
-export const register = async (username: string, password: string, company_name: string, invite_code?: string): Promise<void> => {
+export const register = async (username: string, password: string, company_name: string, invite_code?: string): Promise<{ verification_email_sent: boolean }> => {
   const res = await fetch(`${API_BASE}/users/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -209,8 +212,29 @@ export const register = async (username: string, password: string, company_name:
     throw new RegistrationError(errorData.detail || 'Registration failed', res.status);
   }
 
-  // Auto login after successful registration
-  await login(username, password);
+  // The account exists but can't log in until the verification link is
+  // clicked (see src/api/auth.py's /token check) — no auto-login here.
+  const data = await res.json();
+  return { verification_email_sent: data.verification_email_sent !== false };
+};
+
+export const verifyEmail = async (token: string): Promise<string> => {
+  const res = await fetch(`${API_BASE}/users/verify-email?token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Verification failed');
+  }
+  return data.msg || 'Email verified successfully.';
+};
+
+export const resendVerificationEmail = async (username: string): Promise<void> => {
+  await fetch(`${API_BASE}/users/resend-verification`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username }),
+  });
 };
 
 export const getCompanyName = (): string => {

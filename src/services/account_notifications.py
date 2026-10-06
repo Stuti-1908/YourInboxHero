@@ -79,3 +79,29 @@ def _send_limit_reached_email(user: User) -> None:
     """
     _send_via_resend(to_email=user.username, subject=subject, html_body=html)
     logger.warning("usage_limit_reached_email_sent", user_id=user.id, limit=limit)
+
+
+def send_verification_email(user: User) -> None:
+    """Sent right after registration. The account exists but can't log in
+    (see require_active_subscription's sibling check in src/api/auth.py's
+    /token handler) until this link is clicked -- this is what actually
+    confirms the registrant controls the email address they signed up
+    with, closing the account-takeover window where someone could
+    register an ADMIN_EMAILS address or another customer's already-paid
+    email before its real owner does.
+
+    Raises on failure rather than swallowing the exception (unlike the
+    usage-warning emails above) -- if this can't be sent, the user has no
+    other way to verify their account, so the caller needs to know.
+    """
+    settings = get_settings()
+    verify_url = f"{settings.frontend_url}/verify-email?token={user.email_verification_token}"
+    subject = "Verify your email to activate your YourInboxHero account"
+    html = f"""
+    <p>Hi {user.company_name or 'there'},</p>
+    <p>Click below to verify your email address and activate your account:</p>
+    <p><a href="{verify_url}">Verify my email</a></p>
+    <p>If you didn't create this account, you can safely ignore this email.</p>
+    """
+    _send_via_resend(to_email=user.username, subject=subject, html_body=html)
+    logger.info("verification_email_sent", user_id=user.id)
