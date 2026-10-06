@@ -15,16 +15,19 @@ from src.services.document_storage import save_uploaded_document, get_document_p
 
 router = APIRouter(prefix="", tags=["document_requests"])
 
+
 class DocumentRequestCreate(BaseModel):
     client_id: str
     title: str
     description: Optional[str] = None
     due_date: date
 
+
 class DocumentClientOut(BaseModel):
     id: str
     name: str
     email: str
+
 
 class DocumentRequestResponse(BaseModel):
     id: str
@@ -49,7 +52,7 @@ def list_document_requests(
     docs = db.query(DocumentRequest).filter(
         DocumentRequest.user_id == current_user.id
     ).order_by(DocumentRequest.due_date.desc()).all()
-    
+
     results = []
     for doc in docs:
         results.append({
@@ -85,7 +88,7 @@ def create_document_request(
     ).first()
     if not client:
         raise HTTPException(status_code=404, detail="Document client not found")
-    
+
     doc = DocumentRequest(
         user_id=current_user.id,
         client_id=data.client_id,
@@ -97,7 +100,7 @@ def create_document_request(
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    
+
     return {
         "id": doc.id,
         "title": doc.title,

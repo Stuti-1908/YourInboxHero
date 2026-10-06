@@ -12,12 +12,12 @@ client = TestClient(app)
 
 
 def _make_debtor(session, name="Pause Corp"):
-    d = Debtor(user_id='test-id', 
-        id=str(uuid.uuid4()),
-        name=name,
-        email=f"{uuid.uuid4().hex[:8]}@example.com",
-        debtor_type="business",
-    )
+    d = Debtor(user_id='test-id',
+               id=str(uuid.uuid4()),
+               name=name,
+               email=f"{uuid.uuid4().hex[:8]}@example.com",
+               debtor_type="business",
+               )
     session.add(d)
     session.flush()
     return d

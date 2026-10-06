@@ -6,7 +6,7 @@ Business rules:
   - Overdue invoices (due_date < today) are NEVER sent automated reminders (legal guardrail).
 """
 import logging
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -25,12 +25,12 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
     """
     today = date.today()
     upper = today + timedelta(days=lookahead_days)
-    
+
     # We want to exclude invoices where a reminder was already sent today (UTC).
     # Since last_reminder_sent is a UTC datetime, we compare its date component
     # or just ensure it's strictly less than today's datetime start.
     today_start = datetime.combine(today, datetime.min.time())
-    
+
     return (
         db.query(Invoice)
         .join(Invoice.debtor)
@@ -38,7 +38,8 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
             Invoice.status == InvoiceStatus.upcoming,
             Invoice.due_date >= today,
             Invoice.due_date <= upper,
-            (Invoice.last_reminder_sent == None) | (Invoice.last_reminder_sent < today_start)
+            # noqa: E711 — SQLAlchemy Column needs `== None` for IS NULL, not `is None`.
+            (Invoice.last_reminder_sent == None) | (Invoice.last_reminder_sent < today_start)  # noqa: E711
         )
         .all()
     )

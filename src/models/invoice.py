@@ -5,6 +5,7 @@ from .base import Base
 import enum
 import uuid
 
+
 class InvoiceStatus(str, enum.Enum):
     upcoming = "upcoming"
     due = "due"
@@ -13,10 +14,12 @@ class InvoiceStatus(str, enum.Enum):
     manual = "manual"
     paused = "paused"
 
+
 class EscalationTier(str, enum.Enum):
     email = "email"
     sms = "sms"
     voice = "voice"
+
 
 class Invoice(Base):
     __tablename__ = "invoice"
@@ -35,7 +38,7 @@ class Invoice(Base):
     debtor = relationship('Debtor', back_populates='invoices')
     reminders = relationship('ReminderLog', back_populates='invoice', cascade="all, delete-orphan")
     invoice_number = Column(String, nullable=False)
-    amount = Column(Numeric(12,2), nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
     description = Column(String)
     due_date = Column(Date, nullable=False)
     payment_instructions = Column(String)

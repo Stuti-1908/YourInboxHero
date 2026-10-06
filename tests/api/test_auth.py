@@ -11,6 +11,7 @@ import pytest
 # Disable rate limiting for tests
 app.state.limiter.enabled = False
 
+
 @pytest.fixture(autouse=True)
 def clear_overrides():
     old_overrides = app.dependency_overrides.copy()
@@ -26,6 +27,7 @@ def _mock_verification_email():
     don't depend on a real Resend API key or spam error logs on failure."""
     with patch("src.api.auth.send_verification_email") as mock:
         yield mock
+
 
 def test_login_success():
     session = SessionLocal()
@@ -79,6 +81,7 @@ def test_login_blocked_until_email_verified():
         data={"username": test_username, "password": test_password}
     )
     assert response.status_code == 403
+
 
 def test_login_failure():
     client = TestClient(app)

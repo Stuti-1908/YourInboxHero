@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from .base import Base
 import uuid
 
+
 class EmailTemplate(Base):
     __tablename__ = "email_template"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

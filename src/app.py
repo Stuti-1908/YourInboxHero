@@ -2,9 +2,8 @@
 import contextlib
 import logging
 import uuid
-from typing import Optional
 
-from fastapi import FastAPI, Depends, Request, Response
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -21,7 +20,7 @@ from src.api.invoice_list import router as invoice_list_router
 from src.api.health import router as health_router
 from src.api.auth import router as auth_router
 from src.api.email_template import router as email_template_router
-from src.auth import get_current_user, get_password_hash, require_active_subscription
+from src.auth import get_password_hash, require_active_subscription
 from src.db import SessionLocal, engine, get_db
 from src.models.user import User
 from src.models.base import Base
@@ -66,42 +65,41 @@ structlog.configure(
 )
 
 
-
 class CorrelationIdMiddleware:
     """Middleware to add correlation ID to each request for tracing."""
-    
+
     def __init__(self, app: FastAPI):
         self.app = app
-    
+
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        
+
         # Generate or extract correlation ID
         correlation_id = None
         for header_name, header_value in scope.get("headers", []):
             if header_name == b"x-correlation-id":
                 correlation_id = header_value.decode()
                 break
-        
+
         if not correlation_id:
             correlation_id = str(uuid.uuid4())[:8]
-        
+
         # Add to logging context
         logging.LoggerAdapter(logger, {"correlation_id": correlation_id})
-        
+
         async def send_with_correlation(message):
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 headers.append((b"x-correlation-id", correlation_id.encode()))
                 message["headers"] = headers
             await send(message)
-        
+
         # Bind correlation_id to request state for access in route handlers
         scope["state"] = scope.get("state", {})
         scope["state"]["correlation_id"] = correlation_id
-        
+
         await self.app(scope, receive, send_with_correlation)
 
 
@@ -222,9 +220,9 @@ async def liveness_probe():
 async def readiness_probe(request: Request, db: Session = Depends(get_db)):
     """Readiness probe - checks DB and critical dependencies."""
     correlation_id = get_correlation_id(request)
-    
+
     checks = {}
-    
+
     # Database connectivity
     try:
         db.execute(text("SELECT 1"))
@@ -232,13 +230,13 @@ async def readiness_probe(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error("Database health check failed", extra={"correlation_id": correlation_id, "error": str(e)})
         checks["database"] = "unhealthy"
-    
+
     # Resend (if configured)
     checks["resend"] = "healthy" if settings.resend_api_key else "not_configured"
-    
+
     # Overall readiness
     all_healthy = all(v in ("healthy", "not_configured") for v in checks.values())
-    
+
     return {
         "status": "ready" if all_healthy else "not_ready",
         "checks": checks,

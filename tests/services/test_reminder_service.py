@@ -12,12 +12,12 @@ from src.models.invoice import Invoice, InvoiceStatus
 
 
 def _make_debtor(session, name="Acme Corp"):
-    d = Debtor(user_id='test-id', 
-        id=str(uuid.uuid4()),
-        name=name,
-        email=f"{uuid.uuid4().hex[:8]}@example.com",
-        debtor_type="business",
-    )
+    d = Debtor(user_id='test-id',
+               id=str(uuid.uuid4()),
+               name=name,
+               email=f"{uuid.uuid4().hex[:8]}@example.com",
+               debtor_type="business",
+               )
     session.add(d)
     session.flush()
     return d
@@ -110,7 +110,7 @@ def test_process_due_reminders_sends_directly(monkeypatch):
     fake_invoice = type('FakeInvoice', (), {'id': str(uuid.uuid4())})()
 
     with patch('src.services.reminder_service.get_eligible_invoices', return_value=[fake_invoice]), \
-         patch('src.services.reminder_worker.handle_invoice_reminder') as mock_handle:
+        patch('src.services.reminder_worker.handle_invoice_reminder') as mock_handle:
         from src.services.reminder_service import process_due_reminders
         process_due_reminders()
         assert mock_handle.call_count == 1
@@ -127,11 +127,10 @@ def test_process_due_reminders_isolates_failures(monkeypatch):
     ]
 
     with patch('src.services.reminder_service.get_eligible_invoices', return_value=fake_invoices), \
-         patch(
+        patch(
              'src.services.reminder_worker.handle_invoice_reminder',
              side_effect=[Exception('SMTP down'), None],
          ) as mock_handle:
         from src.services.reminder_service import process_due_reminders
         process_due_reminders()  # must not raise
         assert mock_handle.call_count == 2
-

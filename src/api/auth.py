@@ -31,9 +31,11 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 @router.post("/token", response_model=Token)
 @limiter.limit("5/minute")
@@ -60,10 +62,12 @@ async def login_for_access_token(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 @router.post("/logout")
 def logout(token: str = Depends(oauth2_scheme)):
     revoke_token(token)
     return {"msg": "Successfully logged out"}
+
 
 @router.post("/refresh", response_model=Token)
 def refresh_token(
@@ -100,11 +104,14 @@ def refresh_token(
     return {"access_token": new_token, "token_type": "bearer"}
 
 # Debug endpoint to create a test user easily in dev
+
+
 class UserCreate(BaseModel):
     username: str
     password: str
     company_name: str
     invite_code: Optional[str] = None
+
 
 @router.post("/users/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/minute")
@@ -238,6 +245,7 @@ def resend_verification(request: Request, data: ResendVerificationRequest, db: S
 
 from src.auth import get_current_user
 
+
 class UserSettingsUpdate(BaseModel):
     company_name: Optional[str] = None
     logo_base64: Optional[str] = None
@@ -247,6 +255,7 @@ class UserSettingsUpdate(BaseModel):
     smtp_password: Optional[str] = None
     smtp_from_email: Optional[str] = None
     ghl_webhook_signing_secret: Optional[str] = None
+
 
 @router.get("/users/me")
 def get_me(current_user: User = Depends(get_current_user)):
@@ -276,6 +285,7 @@ def get_me(current_user: User = Depends(get_current_user)):
         "chases_limit": current_user.chases_limit or 0,
         "chases_used": current_user.chases_used or 0
     }
+
 
 @router.put("/users/me")
 def update_me(

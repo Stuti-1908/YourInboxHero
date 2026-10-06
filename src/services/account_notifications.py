@@ -45,7 +45,7 @@ def _next_monthly_anniversary(anchor: datetime, after: datetime) -> datetime:
     last_day = calendar.monthrange(year, month)[1]
     day = min(anchor.day, last_day)
     candidate = after.replace(year=year, month=month, day=day, hour=anchor.hour,
-                               minute=anchor.minute, second=anchor.second, microsecond=0)
+                              minute=anchor.minute, second=anchor.second, microsecond=0)
     if candidate < after:
         month += 1
         year += month // 13  # if month rolled past 12

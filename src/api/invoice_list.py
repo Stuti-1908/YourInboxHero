@@ -10,13 +10,14 @@ from src.models.debtor import Debtor
 from src.auth import get_current_user
 from src.models.user import User
 
+
 class InvoiceResponse(BaseModel):
     id: str
     invoice_number: str
     amount: float
     due_date: date
     status: str
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -26,6 +27,7 @@ class PaginatedResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
 
 router = APIRouter()
 
@@ -45,22 +47,22 @@ def list_invoices(
         .join(Debtor)
         .filter(Debtor.user_id == current_user.id)
     )
-    
+
     if status:
         query = query.filter(Invoice.status == status)
     if debtor_id:
         query = query.filter(Invoice.debtor_id == debtor_id)
-    
+
     total = query.count()
     total_pages = (total + page_size - 1) // page_size
-    
+
     invoices = (
         query.order_by(Invoice.due_date.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    
+
     return PaginatedResponse(
         items=invoices,
         total=total,

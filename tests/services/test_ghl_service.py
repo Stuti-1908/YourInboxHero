@@ -64,7 +64,7 @@ def test_find_or_create_contact_creates_when_not_found(monkeypatch):
     create_resp.raise_for_status = lambda: None
 
     with patch("src.services.ghl_service.requests.get", return_value=search_resp), \
-         patch("src.services.ghl_service.requests.post", return_value=create_resp) as mock_post:
+        patch("src.services.ghl_service.requests.post", return_value=create_resp) as mock_post:
         contact_id = ghl_service.find_or_create_contact("Jane Doe", "jane@example.com", "+15551234567")
 
     assert contact_id == "new-contact-1"
@@ -81,7 +81,7 @@ def test_send_sms_success(monkeypatch):
     sms_resp.raise_for_status = lambda: None
 
     with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
-         patch("src.services.ghl_service.requests.post", return_value=sms_resp) as mock_post:
+        patch("src.services.ghl_service.requests.post", return_value=sms_resp) as mock_post:
         result = ghl_service.send_sms(
             phone="+15551234567",
             message="Your invoice is overdue",
@@ -99,7 +99,7 @@ def test_send_sms_success(monkeypatch):
 def test_send_sms_fails_when_contact_lookup_fails(monkeypatch):
     _mock_settings(monkeypatch)
     with patch("src.services.ghl_service.requests.get", side_effect=Exception("network error")), \
-         patch("src.services.ghl_service.requests.post", side_effect=Exception("network error")):
+        patch("src.services.ghl_service.requests.post", side_effect=Exception("network error")):
         result = ghl_service.send_sms(phone="+15551234567", message="hi")
 
     assert result is False
@@ -118,7 +118,7 @@ def test_trigger_voice_call_tags_contact(monkeypatch):
     tag_resp.raise_for_status = lambda: None
 
     with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
-         patch("src.services.ghl_service.requests.post", return_value=tag_resp) as mock_post:
+        patch("src.services.ghl_service.requests.post", return_value=tag_resp) as mock_post:
         result = ghl_service.trigger_voice_call(
             phone="+15551234567",
             message="Your invoice is overdue, please call us back",

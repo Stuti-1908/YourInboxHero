@@ -3,11 +3,9 @@
 The core security property under test: a subscription can ONLY be activated
 via a signature-verified webhook event, never via a direct/forged request.
 """
-import json
 import uuid
 from unittest.mock import patch, MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.app import app

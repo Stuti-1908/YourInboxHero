@@ -4,6 +4,7 @@ from src.app import app
 
 client = TestClient(app)
 
+
 def test_healthz_returns_200():
     resp = client.get('/healthz')
     assert resp.status_code == 200

@@ -12,15 +12,18 @@ from src.models.debtor import Debtor
 
 router = APIRouter()
 
+
 class AgingReport(BaseModel):
     current: float
     days_30: float
     days_60: float
     days_90_plus: float
 
+
 class MonthlyRecovered(BaseModel):
     month: str
     amount: float
+
 
 class AnalyticsResponse(BaseModel):
     total_outstanding: float
@@ -29,6 +32,7 @@ class AnalyticsResponse(BaseModel):
     aging: AgingReport
     status_breakdown: Dict[str, int]
     monthly_recovered: List[MonthlyRecovered]
+
 
 @router.get("/analytics", response_model=AnalyticsResponse)
 def get_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -42,7 +46,7 @@ def get_analytics(db: Session = Depends(get_db), current_user: User = Depends(ge
     total_outstanding = 0.0
     total_recovered = 0.0
     status_breakdown = {}
-    
+
     aging = {
         "current": 0.0,
         "days_30": 0.0,

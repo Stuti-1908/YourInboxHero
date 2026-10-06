@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -10,13 +10,16 @@ from src.models.document_client import DocumentClient
 
 router = APIRouter(prefix="/document-clients", tags=["document_clients"])
 
+
 class DocumentClientCreate(BaseModel):
     name: str
     email: str
     phone: Optional[str] = None
 
+
 class DocumentClientResponse(DocumentClientCreate):
     id: str
+
 
 @router.post("", response_model=DocumentClientResponse)
 def create_document_client(
@@ -39,6 +42,7 @@ def create_document_client(
         "email": db_client.email,
         "phone": db_client.phone
     }
+
 
 @router.get("", response_model=List[DocumentClientResponse])
 def get_document_clients(

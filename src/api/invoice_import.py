@@ -118,7 +118,10 @@ def _parse_csv_rows(raw: bytes) -> tuple[List[dict], List[ImportRowError]]:
         due_date_raw = row.get("due_date", "")
 
         if not name or not email or not invoice_number or not amount_raw or not due_date_raw:
-            errors.append(ImportRowError(row_number=i, error="Missing a required value (debtor_name, debtor_email, invoice_number, amount, or due_date)"))
+            errors.append(ImportRowError(
+                row_number=i,
+                error="Missing a required value (debtor_name, debtor_email, invoice_number, amount, or due_date)",
+            ))
             continue
 
         if "@" not in email:

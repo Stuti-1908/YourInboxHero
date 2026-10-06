@@ -4,7 +4,7 @@ Since azure.servicebus may not be installed in the test environment, we mock
 the import at the point where enqueue_reminder calls it.
 """
 import sys
-from unittest.mock import patch, MagicMock, Mock, ANY
+from unittest.mock import MagicMock, ANY
 import types
 
 

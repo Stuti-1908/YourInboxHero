@@ -11,6 +11,7 @@ from src.models.user import User
 
 router = APIRouter()
 
+
 class InvoiceCreate(BaseModel):
     debtor_id: str
     invoice_number: str
@@ -20,12 +21,14 @@ class InvoiceCreate(BaseModel):
     payment_instructions: Optional[str] = None
     payment_link: Optional[str] = None
 
+
 class InvoiceResponse(BaseModel):
     id: str
     invoice_number: str
     amount: float
     due_date: date
     status: str
+
 
 @router.post('/invoice', response_model=InvoiceResponse)
 def create_invoice(request: InvoiceCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

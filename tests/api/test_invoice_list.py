@@ -9,16 +9,18 @@ from src.models.invoice import Invoice, InvoiceStatus
 
 client = TestClient(app)
 
+
 def _make_debtor(session, name="List Corp"):
-    d = Debtor(user_id='test-id', 
-        id=str(uuid.uuid4()),
-        name=name,
-        email=f"{uuid.uuid4().hex[:8]}@example.com",
-        debtor_type="business",
-    )
+    d = Debtor(user_id='test-id',
+               id=str(uuid.uuid4()),
+               name=name,
+               email=f"{uuid.uuid4().hex[:8]}@example.com",
+               debtor_type="business",
+               )
     session.add(d)
     session.flush()
     return d
+
 
 def _make_invoice(session, debtor, due_date, status=InvoiceStatus.upcoming):
     inv = Invoice(
@@ -33,6 +35,7 @@ def _make_invoice(session, debtor, due_date, status=InvoiceStatus.upcoming):
     session.add(inv)
     session.flush()
     return inv
+
 
 def test_list_invoices_returns_200():
     session = SessionLocal()

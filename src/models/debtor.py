@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from .base import Base
 import uuid
 
+
 class Debtor(Base):
     __tablename__ = "debtor"
     __table_args__ = (

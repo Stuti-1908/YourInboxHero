@@ -23,6 +23,7 @@ def _make_dummy_invoice(plan='scale', smtp_configured=False):
         email = 'client@example.com'
         name = 'Acme Corp'
         user = DummyUser()
+
         def __init__(self, user_id=None):
             self.user_id = user_id
 
@@ -42,9 +43,9 @@ def _make_dummy_invoice(plan='scale', smtp_configured=False):
 def test_send_email_calls_resend(monkeypatch):
     monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
 
-    with patch('src.services.email.EmailTemplate') as mock_template, \
-         patch('src.services.email.SessionLocal') as mock_session_local, \
-         patch('src.services.email.requests.post') as mock_post:
+    with patch('src.services.email.EmailTemplate'), \
+        patch('src.services.email.SessionLocal') as mock_session_local, \
+        patch('src.services.email.requests.post') as mock_post:
         mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = None
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -65,7 +66,7 @@ def test_send_email_raises_when_resend_fails(monkeypatch):
     monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
 
     with patch('src.services.email.SessionLocal') as mock_session_local, \
-         patch('src.services.email.requests.post') as mock_post:
+        patch('src.services.email.requests.post') as mock_post:
         mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = None
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -82,10 +83,10 @@ def test_starter_plan_ignores_saved_smtp_and_uses_resend(monkeypatch):
     Resend, never attempt the user's own SMTP server."""
     monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
 
-    with patch('src.services.email.EmailTemplate') as mock_template, \
-         patch('src.services.email.SessionLocal') as mock_session_local, \
-         patch('src.services.email._send_via_smtp') as mock_smtp, \
-         patch('src.services.email.requests.post') as mock_post:
+    with patch('src.services.email.EmailTemplate'), \
+        patch('src.services.email.SessionLocal') as mock_session_local, \
+        patch('src.services.email._send_via_smtp') as mock_smtp, \
+        patch('src.services.email.requests.post') as mock_post:
         mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = None
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -100,7 +101,7 @@ def test_starter_plan_ignores_saved_smtp_and_uses_resend(monkeypatch):
 
 
 def test_growth_plan_uses_saved_smtp_when_configured(monkeypatch):
-    with patch('src.services.email.EmailTemplate') as mock_template, \
+    with patch('src.services.email.EmailTemplate'), \
          patch('src.services.email.SessionLocal') as mock_session_local, \
          patch('src.services.email._send_via_smtp') as mock_smtp, \
          patch('src.services.email.requests.post') as mock_post:
@@ -124,7 +125,7 @@ def test_starter_plan_ignores_saved_custom_template(monkeypatch):
     monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
 
     with patch('src.services.email.SessionLocal') as mock_session_local, \
-         patch('src.services.email.requests.post') as mock_post:
+        patch('src.services.email.requests.post') as mock_post:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"id": "resend-msg-id"}

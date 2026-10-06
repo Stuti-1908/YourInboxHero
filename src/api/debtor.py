@@ -10,12 +10,14 @@ from src.models.user import User
 
 router = APIRouter()
 
+
 class DebtorCreateRequest(BaseModel):
     name: str
     email: str
     phone: str = None
     debtor_type: str = "business"
     voice_call_consent: bool = False
+
 
 class DebtorResponse(BaseModel):
     id: str
@@ -78,23 +80,23 @@ def get_debtors(
 ):
     """Retrieve paginated debtors for the authenticated client."""
     query = db.query(Debtor).filter(Debtor.user_id == current_user.id)
-    
+
     if search:
         search_term = f"%{search}%"
         query = query.filter(
             (Debtor.name.ilike(search_term)) | (Debtor.email.ilike(search_term))
         )
-    
+
     total = query.count()
     total_pages = (total + page_size - 1) // page_size
-    
+
     debtors = (
         query.order_by(Debtor.name.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    
+
     return PaginatedDebtorResponse(
         items=[
             {
@@ -163,7 +165,7 @@ def delete_debtor(
     debtor = db.query(Debtor).filter(Debtor.id == debtor_id, Debtor.user_id == current_user.id).first()
     if not debtor:
         raise HTTPException(status_code=404, detail="Debtor not found or unauthorized")
-    
+
     db.delete(debtor)
     db.commit()
     return {"detail": "Debtor and all associated data deleted successfully"}

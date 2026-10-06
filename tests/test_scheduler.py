@@ -104,7 +104,7 @@ def test_sms_reminders_does_not_crash_reading_last_reminder_sent():
     try:
         debtor = _make_debtor(session, phone="+15551234567")
         last_sent = datetime.now(timezone.utc) - timedelta(days=3)
-        inv = _make_overdue_invoice(
+        _make_overdue_invoice(
             session, debtor, escalation_tier="sms",
             escalation_started_at=datetime.now(timezone.utc) - timedelta(days=5),
             last_reminder_sent=last_sent,
@@ -127,7 +127,7 @@ def test_voice_calls_does_not_crash_reading_last_reminder_sent():
     try:
         debtor = _make_debtor(session, phone="+15551234567", voice_call_consent=True)
         last_sent = datetime.now(timezone.utc) - timedelta(days=5)
-        inv = _make_overdue_invoice(
+        _make_overdue_invoice(
             session, debtor, escalation_tier="voice",
             escalation_started_at=datetime.now(timezone.utc) - timedelta(days=10),
             last_reminder_sent=last_sent,

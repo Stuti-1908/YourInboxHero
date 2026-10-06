@@ -1,6 +1,6 @@
 """Tests for usage-limit warning emails — must fire exactly once per
 threshold per billing cycle, never block the chase that triggered them."""
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from src.services.account_notifications import maybe_send_usage_warnings
 from src.db import SessionLocal
 from src.models.user import User
@@ -126,7 +126,7 @@ class TestResetAdminInviteUsage:
     paying customers' usage."""
 
     def _make_admin_user(self, session, started_days_ago, chases_used=500,
-                          usage_reset_at=None, stripe_subscription_id=None):
+                         usage_reset_at=None, stripe_subscription_id=None):
         from datetime import datetime, timezone, timedelta
         started = datetime.now(timezone.utc) - timedelta(days=started_days_ago)
         u = User(
@@ -223,7 +223,7 @@ class TestResetAdminInviteUsage:
         from src.services.account_notifications import reset_admin_invite_usage
         session = SessionLocal()
         try:
-            user = self._make_admin_user(
+            self._make_admin_user(
                 session, started_days_ago=35, chases_used=500,
                 stripe_subscription_id="sub_real_customer",
             )

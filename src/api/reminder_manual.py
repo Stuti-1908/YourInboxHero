@@ -4,8 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone
 
 from src.db import get_db
-from src.models.invoice import Invoice, InvoiceStatus
-from src.models.reminder import ReminderLog, Channel, ReminderStatus
+from src.models.invoice import Invoice
 from src.models.debtor import Debtor
 from src.services.email import send_reminder_email
 from src.services.usage_limits import has_chase_capacity, record_chase_used
@@ -37,7 +36,10 @@ def send_manual_reminder(
     if not has_chase_capacity(current_user):
         raise HTTPException(
             status_code=402,
-            detail=f"Monthly reminder limit reached ({current_user.chases_used}/{current_user.chases_limit}). Upgrade your plan to send more.",
+            detail=(
+                f"Monthly reminder limit reached ({current_user.chases_used}/{current_user.chases_limit}). "
+                "Upgrade your plan to send more."
+            ),
         )
     # Send email (mockable)
     send_reminder_email(invoice)

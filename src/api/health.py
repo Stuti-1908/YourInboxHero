@@ -4,6 +4,7 @@ import time
 router = APIRouter()
 START_TIME = time.time()
 
+
 @router.get('/healthz')
 def health_check():
     """Health check endpoint for Azure App Service slot swap verification."""

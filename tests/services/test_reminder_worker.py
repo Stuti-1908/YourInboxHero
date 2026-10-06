@@ -2,7 +2,7 @@
 import uuid
 import pytest
 from datetime import date, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.db import SessionLocal
 from src.models.debtor import Debtor
@@ -11,12 +11,12 @@ from src.models.reminder import ReminderLog
 
 
 def _make_debtor(session, name="Worker Corp"):
-    d = Debtor(user_id='test-id', 
-        id=str(uuid.uuid4()),
-        name=name,
-        email=f"{uuid.uuid4().hex[:8]}@example.com",
-        debtor_type="business",
-    )
+    d = Debtor(user_id='test-id',
+               id=str(uuid.uuid4()),
+               name=name,
+               email=f"{uuid.uuid4().hex[:8]}@example.com",
+               debtor_type="business",
+               )
     session.add(d)
     session.flush()
     return d

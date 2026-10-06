@@ -4,9 +4,10 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
 
+
 class DocumentClient(Base):
     __tablename__ = "document_client"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)

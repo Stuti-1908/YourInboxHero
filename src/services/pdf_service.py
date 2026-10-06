@@ -9,6 +9,7 @@ from reportlab.platypus import Image
 
 from src.services.plan_features import plan_has_feature
 
+
 def generate_invoice_pdf(invoice, debtor, user):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -34,13 +35,13 @@ def generate_invoice_pdf(invoice, debtor, user):
             elements.append(img)
             elements.append(Spacer(1, 10))
             elements.append(Paragraph("<b>Invoice</b>", title_style))
-        except Exception as e:
+        except Exception:
             brand_name = user.company_name or user.username
             elements.append(Paragraph(f"<b>{brand_name}</b> - Invoice", title_style))
     else:
         brand_name = user.company_name or user.username
         elements.append(Paragraph(f"<b>{brand_name}</b> - Invoice", title_style))
-        
+
     elements.append(Spacer(1, 12))
 
     # Details
@@ -60,7 +61,7 @@ def generate_invoice_pdf(invoice, debtor, user):
         ["Description", "Amount"],
         [invoice.description or "Invoice Amount", f"${invoice.amount}"]
     ]
-    
+
     t = Table(data, colWidths=[300, 100])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ecf0f1')),
@@ -69,7 +70,7 @@ def generate_invoice_pdf(invoice, debtor, user):
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))

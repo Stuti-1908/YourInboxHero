@@ -43,16 +43,16 @@ def verify_ghl_signature(
     """
     if not signature or not signature.startswith("sha256="):
         return False
-    
+
     expected_signature = signature[7:]  # Remove 'sha256=' prefix
-    
+
     # Compute HMAC-SHA256
     computed_signature = hmac.new(
         webhook_secret.encode('utf-8'),
         payload,
         hashlib.sha256
     ).hexdigest()
-    
+
     # Constant-time comparison
     return hmac.compare_digest(computed_signature, expected_signature)
 
@@ -98,17 +98,17 @@ async def ghl_webhook_receiver(
                 webhook_secret_prefix=webhook_secret[:8],
             )
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
-    
+
     # 3. Extract Debtor Info
     full_name = f"{payload.first_name or ''} {payload.last_name or ''}".strip()
     if not full_name:
         full_name = payload.email.split('@')[0]
-    
+
     debtor = db.query(Debtor).filter(
-        Debtor.user_id == user.id, 
+        Debtor.user_id == user.id,
         Debtor.email == payload.email
     ).first()
-    
+
     if not debtor:
         debtor = Debtor(
             user_id=user.id,
@@ -126,14 +126,14 @@ async def ghl_webhook_receiver(
         if payload.phone:
             debtor.phone = payload.phone
         db.commit()
-    
+
     # 4. Create Invoice (if provided)
     if payload.amount and payload.amount > 0 and payload.due_date:
         try:
             parsed_due_date = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
         except ValueError:
             parsed_due_date = date.today()  # fallback
-        
+
         inv_number = payload.invoice_number or f"INV-{uuid.uuid4().hex[:6].upper()}"
 
         # Ensure invoice number is unique for this user
@@ -159,5 +159,5 @@ async def ghl_webhook_receiver(
         )
         db.add(new_invoice)
         db.commit()
-    
+
     return {"status": "success", "message": "GHL data processed successfully"}

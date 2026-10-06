@@ -15,6 +15,7 @@ from src.models.debtor import Debtor
 from src.auth import get_current_user
 from src.models.user import User
 
+
 class ReminderLogResponse(BaseModel):
     id: str
     invoice_id: str
@@ -42,7 +43,7 @@ def get_reminder_history(
     if limit:
         query = query.limit(limit)
     logs = query.all()
-    
+
     return [
         {
             "id": log.id,
@@ -54,6 +55,7 @@ def get_reminder_history(
         } for log in logs
     ]
 
+
 @router.get('/reminders/history/csv')
 def get_reminder_history_csv(
     start_date: Optional[date] = Query(None),
@@ -64,16 +66,17 @@ def get_reminder_history_csv(
     """Export reminder history as CSV."""
     query = _build_history_query(start_date, end_date, db, current_user)
     logs = query.all()
-    
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(['id', 'invoice_id', 'sent_at', 'channel', 'status'])
     for log in logs:
         writer.writerow([log.id, log.invoice_id, log.sent_at, log.channel.value, log.status.value])
-    
+
     response = Response(content=output.getvalue(), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=reminders_history.csv"
     return response
+
 
 def _build_history_query(start_date, end_date, db, current_user):
     query = (

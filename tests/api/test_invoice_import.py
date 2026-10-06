@@ -79,8 +79,8 @@ def test_preview_flags_existing_invoice_number():
         session.flush()
         existing_number = f"INV-EXIST-{uuid.uuid4().hex[:6]}"
         inv = Invoice(id=str(uuid.uuid4()), user_id='test-id', debtor_id=d.id, invoice_number=existing_number,
-                       amount=100, due_date=date.today() + timedelta(days=5),
-                       status="upcoming")
+                      amount=100, due_date=date.today() + timedelta(days=5),
+                      status="upcoming")
         session.add(inv)
         session.commit()
     finally:
@@ -174,7 +174,7 @@ def test_commit_skips_row_with_duplicate_invoice_number_but_continues():
         session.flush()
         existing_number = f"INV-SKIP-{uuid.uuid4().hex[:6]}"
         inv = Invoice(id=str(uuid.uuid4()), user_id='test-id', debtor_id=d.id, invoice_number=existing_number,
-                       amount=50, due_date=date.today() + timedelta(days=5), status="upcoming")
+                      amount=50, due_date=date.today() + timedelta(days=5), status="upcoming")
         session.add(inv)
         session.commit()
     finally:

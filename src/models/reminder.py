@@ -5,14 +5,17 @@ from sqlalchemy.orm import relationship
 import enum
 from .base import Base
 
+
 class Channel(str, enum.Enum):
     email = "email"
     sms = "sms"
     voice = "voice"
 
+
 class ReminderStatus(str, enum.Enum):
     sent = "sent"
     failed = "failed"
+
 
 class ReminderLog(Base):
     __tablename__ = "reminder_log"

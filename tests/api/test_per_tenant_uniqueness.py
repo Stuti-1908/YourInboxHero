@@ -46,7 +46,7 @@ def test_two_users_can_each_add_a_debtor_with_the_same_email():
         session = SessionLocal()
         try:
             debtor_a = Debtor(id=str(uuid.uuid4()), user_id=user_a_id, name="Client A",
-                               email=shared_email, debtor_type="business", voice_call_consent=False)
+                              email=shared_email, debtor_type="business", voice_call_consent=False)
             session.add(debtor_a)
             session.commit()
         finally:
@@ -76,15 +76,15 @@ def test_two_users_can_each_use_invoice_number_inv_001():
         user_a = _make_active_user(session)
         user_b = _make_active_user(session)
         debtor_a = Debtor(id=str(uuid.uuid4()), user_id=user_a.id, name="A Corp",
-                           email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
+                          email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
         debtor_b = Debtor(id=str(uuid.uuid4()), user_id=user_b.id, name="B Corp",
-                           email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
+                          email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
         session.add_all([debtor_a, debtor_b])
         session.flush()
 
         inv_a = Invoice(id=str(uuid.uuid4()), user_id=user_a.id, debtor_id=debtor_a.id,
-                         invoice_number=inv_number, amount=100, due_date=date.today() + timedelta(days=5),
-                         status=InvoiceStatus.upcoming)
+                        invoice_number=inv_number, amount=100, due_date=date.today() + timedelta(days=5),
+                        status=InvoiceStatus.upcoming)
         session.add(inv_a)
         session.commit()
         user_b_id, debtor_b_id = user_b.id, debtor_b.id
@@ -118,7 +118,7 @@ def test_same_user_still_blocked_from_duplicate_invoice_number():
     try:
         user = _make_active_user(session)
         debtor = Debtor(id=str(uuid.uuid4()), user_id=user.id, name="Dup Corp",
-                         email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
+                        email=f"{uuid.uuid4().hex[:8]}@example.com", debtor_type="business")
         session.add(debtor)
         session.flush()
         inv = Invoice(id=str(uuid.uuid4()), user_id=user.id, debtor_id=debtor.id,

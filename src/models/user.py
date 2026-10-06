@@ -4,11 +4,14 @@ import uuid
 import secrets
 from .base import Base
 
+
 def generate_webhook_secret():
     return f"wh_sec_{secrets.token_hex(16)}"
 
+
 def generate_email_verification_token():
     return secrets.token_urlsafe(32)
+
 
 class User(Base):
     __tablename__ = "users"

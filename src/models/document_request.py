@@ -18,15 +18,15 @@ class DocumentRequest(Base):
     user = relationship('User')
     client_id = Column(String, ForeignKey('document_client.id'), nullable=False)
     client = relationship('DocumentClient')
-    
+
     # Document details
     title = Column(String, nullable=False)  # e.g. "W-9 Tax Form", "Signed Contract"
     description = Column(Text, nullable=True)
     due_date = Column(Date, nullable=False)
-    
+
     # Status tracking
     status = Column(String, nullable=False, default="pending")  # pending, submitted, approved, overdue
-    
+
     # Upload tracking
     upload_token = Column(String, unique=True, nullable=False, default=lambda: f"doc_{uuid.uuid4().hex[:12]}")
     uploaded_file_name = Column(String, nullable=True)  # original filename, for display to the business owner

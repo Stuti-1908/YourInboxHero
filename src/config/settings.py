@@ -11,19 +11,19 @@ class Settings(BaseSettings):
         default="dev-secret-key-change-in-production-min-32-characters-long",
         description="JWT signing secret (32+ chars)"
     )
-    
+
     # Database - required in production, SQLite default for local dev
     database_url: str = Field(
         default="sqlite:///local.db",
         description="PostgreSQL connection string for production"
     )
-    
+
     # External services
     resend_api_key: Optional[str] = Field(default=None, description="Resend API key for fallback emails")
     resend_from_email: str = Field(default="reminders@yourinboxhero.com", description="Default From address for Resend sends")
     ghl_api_key: Optional[str] = Field(default=None, description="GoHighLevel API key for SMS/Voice")
     ghl_location_id: Optional[str] = Field(default=None, description="GoHighLevel location ID")
-    
+
     # Azure / Monitoring
     applicationinsights_connection_string: Optional[str] = Field(default=None)
 
@@ -45,14 +45,14 @@ class Settings(BaseSettings):
     # uploaded_documents volume) or uploads are lost on every redeploy.
     upload_dir: str = Field(default="./uploads", description="Directory for client-uploaded documents")
     max_upload_size_mb: int = Field(default=15, description="Maximum accepted upload size in MB")
-    
+
     # Feature flags
     unleash_url: Optional[str] = Field(default=None, description="Unleash feature flag service URL")
-    
+
     # Queue (legacy/unused currently)
     service_bus_connection_string: Optional[str] = Field(default=None)
     reminder_queue_name: str = Field(default="reminder-queue")
-    
+
     # Stripe (payment/subscription processing)
     stripe_secret_key: Optional[str] = Field(default=None)
     stripe_webhook_secret: Optional[str] = Field(default=None, description="Signing secret for verifying Stripe webhook events")
@@ -63,16 +63,16 @@ class Settings(BaseSettings):
     # (e.g. the email-verification link), which must point at the frontend,
     # not this API.
     frontend_url: str = Field(default="http://localhost:5173", description="Base URL of the deployed frontend")
-    
+
     # Environment
     environment: str = Field(default="development", description="development|staging|production")
-    
+
     # CORS
     cors_origins: List[str] = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
         description="Allowed CORS origins"
     )
-    
+
     # Database pool settings. Kept modest by default because Supabase's free-
     # tier session pooler caps concurrent clients around ~15 — a single
     # Hetzner instance with the old defaults (10 + 20 overflow = 30 max)
@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=5, description="SQLAlchemy max overflow")
     db_pool_recycle: int = Field(default=3600, description="Connection recycle seconds")
     db_pool_pre_ping: bool = Field(default=True, description="Validate connections before use")
-    
+
     # Reminder settings
     reminders_enabled: bool = Field(default=True, description="Global reminder toggle")
     email_lookahead_days: int = Field(default=14, description="Days ahead to send pre-due reminders")

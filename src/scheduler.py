@@ -16,7 +16,7 @@ import structlog
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone
 
 from src.db import SessionLocal
 from src.models.user import User  # noqa: F401
@@ -52,6 +52,7 @@ def _as_aware_utc(dt):
         return dt.replace(tzinfo=timezone.utc)
     return dt
 
+
 # Escalation timing (days) - from settings
 EMAIL_TO_SMS_DAYS = settings.email_to_sms_days
 SMS_TO_VOICE_DAYS = settings.sms_to_voice_days
@@ -60,12 +61,12 @@ SMS_TO_VOICE_DAYS = settings.sms_to_voice_days
 def run_escalation_sweep(db: Session):
     """Check all overdue invoices and escalate them through tiers."""
     now = datetime.now(timezone.utc)
-    
+
     overdue_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
         Invoice.escalation_tier.in_(["email", "sms"])
     ).all()
-    
+
     for inv in overdue_invoices:
         try:
             # Initialize escalation_started_at if not set
@@ -81,10 +82,10 @@ def run_escalation_sweep(db: Session):
                 inv.escalation_tier = "sms"
                 inv.escalation_started_at = now
                 logger.info("invoice_escalated",
-                           invoice_id=str(inv.id),
-                           invoice_number=inv.invoice_number,
-                           from_tier="email", to_tier="sms",
-                           days_in_tier=days_in_tier)
+                            invoice_id=str(inv.id),
+                            invoice_number=inv.invoice_number,
+                            from_tier="email", to_tier="sms",
+                            days_in_tier=days_in_tier)
                 db.commit()
 
             # TIER 2 → TIER 3: SMS to Voice
@@ -92,10 +93,10 @@ def run_escalation_sweep(db: Session):
                 inv.escalation_tier = "voice"
                 inv.escalation_started_at = now
                 logger.info("invoice_escalated",
-                           invoice_id=str(inv.id),
-                           invoice_number=inv.invoice_number,
-                           from_tier="sms", to_tier="voice",
-                           days_in_tier=days_in_tier)
+                            invoice_id=str(inv.id),
+                            invoice_number=inv.invoice_number,
+                            from_tier="sms", to_tier="voice",
+                            days_in_tier=days_in_tier)
                 db.commit()
         except Exception as e:
             db.rollback()
@@ -123,18 +124,18 @@ def run_sms_reminders(db: Session):
         debtor = inv.debtor
         if not debtor.phone:
             logger.warning("sms_skipped_no_phone",
-                          invoice_id=str(inv.id),
-                          debtor_name=debtor.name)
+                           invoice_id=str(inv.id),
+                           debtor_name=debtor.name)
             continue
 
         user = debtor.user
         if not can_send_chase(user):
             logger.warning("sms_skipped_cannot_send_chase",
-                          invoice_id=str(inv.id),
-                          user_id=user.id,
-                          subscription_status=user.subscription_status,
-                          chases_used=user.chases_used,
-                          chases_limit=user.chases_limit)
+                           invoice_id=str(inv.id),
+                           user_id=user.id,
+                           subscription_status=user.subscription_status,
+                           chases_used=user.chases_used,
+                           chases_limit=user.chases_limit)
             continue
         company_name = user.company_name or "YourInboxHero"
 
@@ -149,8 +150,11 @@ def run_sms_reminders(db: Session):
         if sms_template:
             message = sms_template.body
         else:
-            message = f"Hi {debtor.name}, Invoice #{inv.invoice_number} for ${inv.amount:.2f} is OVERDUE. Please pay now: {inv.payment_link or 'contact us'} - {company_name}"
-        
+            message = (
+                f"Hi {debtor.name}, Invoice #{inv.invoice_number} for ${inv.amount:.2f} is OVERDUE. "
+                f"Please pay now: {inv.payment_link or 'contact us'} - {company_name}"
+            )
+
         # Replace variables
         replacements = {
             "{{debtor_name}}": debtor.name,
@@ -162,7 +166,7 @@ def run_sms_reminders(db: Session):
         }
         for key, val in replacements.items():
             message = message.replace(key, val)
-        
+
         try:
             success = send_sms(
                 phone=debtor.phone,
@@ -176,9 +180,9 @@ def run_sms_reminders(db: Session):
                 inv.last_reminder_sent = datetime.now(timezone.utc)
                 record_chase_used(user, db, channel='sms', invoice_id=str(inv.id))
                 logger.info("sms_sent",
-                           invoice_id=str(inv.id),
-                           invoice_number=inv.invoice_number,
-                           debtor_phone=debtor.phone)
+                            invoice_id=str(inv.id),
+                            invoice_number=inv.invoice_number,
+                            debtor_phone=debtor.phone)
             # Commit per-invoice: a later invoice in this loop throwing must
             # not roll back an earlier invoice's already-successful send,
             # which would otherwise cause it to be sent again next run (and
@@ -214,33 +218,36 @@ def run_voice_calls(db: Session):
         debtor = inv.debtor
         if not debtor.phone:
             logger.warning("voice_call_skipped_no_phone",
-                          invoice_id=str(inv.id),
-                          debtor_name=debtor.name)
+                           invoice_id=str(inv.id),
+                           debtor_name=debtor.name)
             continue
 
         if not debtor.voice_call_consent:
             logger.info("voice_call_skipped_no_consent",
-                       invoice_id=str(inv.id),
-                       debtor_id=debtor.id)
+                        invoice_id=str(inv.id),
+                        debtor_id=debtor.id)
             continue
 
         user = debtor.user
         if not plan_has_feature(user.subscription_plan, "voice_escalation"):
             logger.info("voice_call_skipped_plan_tier",
-                       invoice_id=str(inv.id),
-                       user_id=user.id,
-                       plan=user.subscription_plan)
+                        invoice_id=str(inv.id),
+                        user_id=user.id,
+                        plan=user.subscription_plan)
             continue
         if not can_send_chase(user):
             logger.warning("voice_call_skipped_cannot_send_chase",
-                          invoice_id=str(inv.id),
-                          user_id=user.id,
-                          subscription_status=user.subscription_status,
-                          chases_used=user.chases_used,
-                          chases_limit=user.chases_limit)
+                           invoice_id=str(inv.id),
+                           user_id=user.id,
+                           subscription_status=user.subscription_status,
+                           chases_used=user.chases_used,
+                           chases_limit=user.chases_limit)
             continue
         company_name = user.company_name or "YourInboxHero"
-        message = f"This is an automated call from {company_name}. Invoice number {inv.invoice_number} for ${inv.amount:.2f} is overdue. Please make your payment immediately."
+        message = (
+            f"This is an automated call from {company_name}. Invoice number {inv.invoice_number} "
+            f"for ${inv.amount:.2f} is overdue. Please make your payment immediately."
+        )
 
         try:
             success = trigger_voice_call(
@@ -255,9 +262,9 @@ def run_voice_calls(db: Session):
                 inv.last_reminder_sent = datetime.now(timezone.utc)
                 record_chase_used(user, db, channel='voice', invoice_id=str(inv.id))
                 logger.info("voice_call_triggered",
-                           invoice_id=str(inv.id),
-                           invoice_number=inv.invoice_number,
-                           debtor_phone=debtor.phone)
+                            invoice_id=str(inv.id),
+                            invoice_number=inv.invoice_number,
+                            debtor_phone=debtor.phone)
             # Commit per-invoice — see the matching comment in run_sms_reminders.
             db.commit()
         except Exception as e:
@@ -310,7 +317,7 @@ def run_daily_sweep():
                 elif step_name == "admin_invite_usage_reset" and result:
                     logger.info("admin_invite_usage_reset_completed", count=result)
             except Exception as e:
-                logger.error(f"daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
+                logger.error("daily_sweep_step_failed", step=step_name, error=str(e), exc_info=True)
 
         _mark_sweep_run_today(db)
 

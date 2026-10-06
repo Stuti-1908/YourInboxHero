@@ -1,5 +1,4 @@
 """Email service with retry logic and structured logging."""
-import os
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Dict
@@ -125,7 +124,7 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
     correlation_id = getattr(invoice, 'correlation_id', 'unknown')
     user = invoice.debtor.user
     company_name = user.company_name or 'YourInboxHero'
-    
+
     logger.info(
         "preparing_reminder_email",
         invoice_id=str(invoice.id),
@@ -133,7 +132,7 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
         debtor_email=invoice.debtor.email,
         correlation_id=correlation_id,
     )
-    
+
     # Custom templates and custom SMTP are both Growth+ features. A
     # downgraded or never-upgraded Starter user may still have saved
     # values for either (saving isn't blocked — see email_template.py and
