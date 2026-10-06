@@ -34,6 +34,9 @@ if [ -z "$DATABASE_URL" ]; then
     echo "ERROR: DATABASE_URL not set in $ENV_FILE" >&2
     exit 1
 fi
+# psql doesn't understand SQLAlchemy's dialect-qualified scheme — see the
+# matching note in backup_database.sh.
+DATABASE_URL=$(echo "$DATABASE_URL" | sed 's#^postgresql+psycopg2://#postgresql://#')
 
 echo "About to restore $BACKUP_FILE into:"
 echo "  $DATABASE_URL" | sed -E 's/:[^:@]+@/:****@/'  # mask the password

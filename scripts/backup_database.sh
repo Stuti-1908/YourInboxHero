@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Nightly database backup (M5). Runs pg_dump against the production
 # Postgres database (via a throwaway postgres:17-alpine container, since
 # the Hetzner host itself has no Postgres client tools installed) and
@@ -13,11 +13,16 @@
 # Pro (automatic off-site backups + point-in-time recovery) before this is
 # the only backup a paying customer's data depends on.
 #
+# Requires bash (not /bin/sh) for `set -o pipefail` below — without it,
+# `pg_dump ... | gzip` only reports gzip's exit code, so a failed pg_dump
+# (e.g. the dialect-qualified-URL bug this script once had, see below)
+# still looks like success and silently writes a tiny, broken backup file.
+#
 # Usage: ./backup_database.sh
 # Expects to be run from the repo root with .env present (same file
 # docker-compose reads DATABASE_URL from).
 
-set -eu
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -35,6 +40,13 @@ if [ -z "$DATABASE_URL" ]; then
     echo "ERROR: DATABASE_URL not set in $ENV_FILE" >&2
     exit 1
 fi
+# The app's DATABASE_URL uses SQLAlchemy's dialect-qualified scheme
+# (postgresql+psycopg2://), which pg_dump/psql don't understand as a URI
+# -- they silently fall back to a local Unix-socket connection attempt
+# instead of erroring on the unrecognized scheme, which is how this
+# produced a tiny, broken "backup" the first time this script ran rather
+# than a clear connection error.
+DATABASE_URL=$(echo "$DATABASE_URL" | sed 's#^postgresql+psycopg2://#postgresql://#')
 
 mkdir -p "$BACKUP_DIR"
 
@@ -50,6 +62,16 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting backup -> $OUT_FILE"
 if docker run --rm postgres:17-alpine \
     pg_dump --no-owner --no-acl --format=plain "$DATABASE_URL" \
     | gzip > "$TMP_FILE"; then
+    # Sanity check: a real dump of this schema is comfortably >1KB even
+    # near-empty. Catches silent failure modes pipefail wouldn't (e.g. a
+    # pg_dump that exits 0 but emits only warnings/empty output).
+    MIN_BYTES=1024
+    ACTUAL_BYTES=$(wc -c < "$TMP_FILE")
+    if [ "$ACTUAL_BYTES" -lt "$MIN_BYTES" ]; then
+        rm -f "$TMP_FILE"
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] ERROR: dump suspiciously small (${ACTUAL_BYTES} bytes) — treating as failed" >&2
+        exit 1
+    fi
     mv "$TMP_FILE" "$OUT_FILE"
     SIZE=$(du -h "$OUT_FILE" | cut -f1)
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Backup complete: $OUT_FILE ($SIZE)"
