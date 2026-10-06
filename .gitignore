@@ -13,3 +13,4 @@ venv/
 .omc/
 .playwright-mcp/
 landing-*.png
+/backups/
