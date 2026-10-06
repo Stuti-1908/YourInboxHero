@@ -7,6 +7,7 @@ requests
 jinja2
 pytest
 pytest-mock
+pytest-cov
 httpx
 pyjwt
 passlib[bcrypt]
