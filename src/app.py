@@ -111,8 +111,17 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     validate_production_settings(settings)
 
-    # Ensure tables are created (useful if alembic isn't run in dev)
-    Base.metadata.create_all(bind=engine)
+    # Dev-only convenience so a fresh local checkout doesn't need `alembic
+    # upgrade head` run manually before first use. In production this used
+    # to run unconditionally, which is how 6 tables (document_client,
+    # email_template, pending_subscriptions, document_request, sweep_run,
+    # processed_stripe_events) ended up existing only via create_all() and
+    # never captured by any migration — see alembic/versions/a225ef8d6e70,
+    # which brings them into Alembic's tracked history. Production must
+    # rely on migrations alone from here on, or schema drift like that can
+    # recur silently.
+    if settings.environment == "development":
+        Base.metadata.create_all(bind=engine)
 
     # Seed a default admin user for local development only. In production
     # this would create a well-known admin/admin login on a public app —
