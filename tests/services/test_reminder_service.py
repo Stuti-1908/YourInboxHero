@@ -103,6 +103,31 @@ def test_get_eligible_today_is_included():
         session.close()
 
 
+def test_get_eligible_includes_due_status_not_only_upcoming():
+    """Regression test: invoice_create.py/invoice_import.py/invoice_pause.py/
+    webhooks.py all set status='due' (not 'upcoming') for an invoice whose
+    due_date == today at creation time -- 'due' is a display-status label
+    for "due today", not a separate lifecycle state. Before this fix,
+    get_eligible_invoices only matched status == 'upcoming', so an invoice
+    created with due_date == today got 'due' and was never picked up for
+    its pre-due reminder; the next day overdue_service.py flipped it
+    straight to 'overdue', which never gets an automated email per the
+    legal guardrail -- so that invoice got zero reminder contact, ever."""
+    from src.services.reminder_service import get_eligible_invoices
+
+    session = SessionLocal()
+    try:
+        debtor = _make_debtor(session, name="Due Today Corp")
+        inv_due = _make_invoice(session, debtor, date.today(), status=InvoiceStatus.due)
+        session.commit()
+
+        results = get_eligible_invoices(session, lookahead_days=14)
+        found = [r for r in results if r.id == inv_due.id]
+        assert len(found) == 1
+    finally:
+        session.close()
+
+
 def test_process_due_reminders_sends_directly(monkeypatch):
     """process_due_reminders should call handle_invoice_reminder for each eligible invoice."""
     monkeypatch.setenv('REMINDERS_ENABLED', 'true')

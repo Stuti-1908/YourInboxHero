@@ -2,7 +2,16 @@
 
 Business rules:
   - Only 'business' debtor invoices are eligible.
-  - Only invoices with status 'upcoming' and due_date within [today, today+lookahead_days] qualify.
+  - Only invoices with status 'upcoming' or 'due' and due_date within
+    [today, today+lookahead_days] qualify. 'due' is set (by invoice_create,
+    invoice_import, invoice_pause, webhooks.py) whenever due_date == today --
+    it's a display-status label for "due today", not a distinct lifecycle
+    state the reminder engine should treat differently from 'upcoming'.
+    Omitting it here was a real bug: an invoice created with due_date ==
+    today got 'due' at creation, was never picked up for its pre-due
+    reminder, and the next day overdue_service.py flips it straight to
+    'overdue' -- which per the legal guardrail below never gets an
+    automated email. That invoice silently got zero reminder contact ever.
   - Overdue invoices (due_date < today) are NEVER sent automated reminders (legal guardrail).
 """
 import logging
@@ -17,7 +26,8 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
     """Return invoices eligible for a pre-due reminder.
 
     Eligibility criteria:
-      1. status == 'upcoming'
+      1. status in ('upcoming', 'due') -- 'due' just means due_date == today,
+         not a separate state excluded from reminders (see module docstring)
       2. due_date >= today  (not overdue)
       3. due_date <= today + lookahead_days  (within the reminder window)
       4. debtor.debtor_type == 'business'
@@ -35,7 +45,7 @@ def get_eligible_invoices(db: Session, lookahead_days: int = 14):
         db.query(Invoice)
         .join(Invoice.debtor)
         .filter(
-            Invoice.status == InvoiceStatus.upcoming,
+            Invoice.status.in_([InvoiceStatus.upcoming, InvoiceStatus.due]),
             Invoice.due_date >= today,
             Invoice.due_date <= upper,
             # noqa: E711 — SQLAlchemy Column needs `== None` for IS NULL, not `is None`.
