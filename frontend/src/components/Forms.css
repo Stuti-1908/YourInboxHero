@@ -85,6 +85,28 @@
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  background-color: transparent;
+  color: var(--color-brand-primary);
+  border: 1px solid var(--color-border, #E5E7EB);
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-brand-primary);
+  background-color: var(--color-bg-primary);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .error-message {
   background-color: var(--color-status-error-bg);
   color: var(--color-status-error);
