@@ -38,42 +38,25 @@ export const DocumentTable: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: '#f59e0b',
-      submitted: '#10b981',
-      approved: '#3b82f6',
-      overdue: '#ef4444'
-    };
-    return (
-      <span style={{
-        padding: '4px 10px',
-        borderRadius: '12px',
-        fontSize: '0.8rem',
-        fontWeight: 600,
-        color: '#fff',
-        backgroundColor: colors[status] || '#6b7280'
-      }}>
-        {status.toUpperCase()}
-      </span>
-    );
-  };
+  const getStatusBadge = (status: string) => (
+    <span className={`badge status-${status.toLowerCase()}`}>{status}</span>
+  );
 
   if (loading) return <div className="loading">Loading document requests...</div>;
 
   return (
-    <div className="invoice-table-container fade-in">
+    <div className="table-container fade-in">
       <div className="table-header">
         <h2>Document Requests</h2>
-        <p style={{ color: 'var(--color-text-light)' }}>Track documents and forms you're collecting from clients.</p>
+        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>Track documents and forms you're collecting from clients.</p>
       </div>
-      
+
       {docs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-light)' }}>
+        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-secondary)' }}>
           No document requests yet. Create one to start collecting documents automatically.
         </div>
       ) : (
-        <table className="invoice-table">
+        <table className="modern-table">
           <thead>
             <tr>
               <th>Client</th>
@@ -90,12 +73,12 @@ export const DocumentTable: React.FC = () => {
               <tr key={doc.id}>
                 <td>
                   <div style={{ fontWeight: 500 }}>{doc.client.name}</div>
-                  <div style={{ fontSize: '0.85em', color: 'var(--color-text-light)' }}>{doc.client.email}</div>
+                  <div style={{ fontSize: '0.85em', color: 'var(--color-text-secondary)' }}>{doc.client.email}</div>
                 </td>
                 <td>
                   <strong>{doc.title}</strong>
                   {doc.description && <br />}
-                  {doc.description && <small style={{ color: 'var(--color-text-light)' }}>{doc.description}</small>}
+                  {doc.description && <small style={{ color: 'var(--color-text-secondary)' }}>{doc.description}</small>}
                 </td>
                 <td>{doc.due_date}</td>
                 <td>{getStatusBadge(doc.status)}</td>
@@ -103,32 +86,30 @@ export const DocumentTable: React.FC = () => {
                   <span title={`Tier: ${doc.escalation_tier}`}>
                     {doc.escalation_tier.toUpperCase()}
                   </span>
-                  {doc.sms_sent_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-light)' }}>{doc.sms_sent_count} SMS</small>}
-                  {doc.voice_call_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-light)' }}>{doc.voice_call_count} calls</small>}
+                  {doc.sms_sent_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-secondary)' }}>{doc.sms_sent_count} SMS</small>}
+                  {doc.voice_call_count > 0 && <small style={{ display: 'block', color: 'var(--color-text-secondary)' }}>{doc.voice_call_count} calls</small>}
                 </td>
                 <td>
                   <button
+                    className="btn-action"
                     onClick={() => {
                       navigator.clipboard.writeText(`${window.location.origin}/upload/${doc.upload_token}`);
                       alert('Upload link copied!');
                     }}
-                    style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent' }}
                   >
                     Copy Link
                   </button>
                 </td>
-                <td>
+                <td style={{ display: 'flex', gap: '8px' }}>
                   {doc.status === 'submitted' || doc.status === 'approved' ? (
-                    <button
-                      onClick={() => handleDownload(doc)}
-                      style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid var(--color-border)', background: 'transparent', marginRight: '8px' }}
-                    >
+                    <button className="btn-action" onClick={() => handleDownload(doc)}>
                       Download
                     </button>
                   ) : null}
                   <button
+                    className="btn-action"
+                    style={{ borderColor: '#dc2626', color: '#dc2626' }}
                     onClick={() => handleDelete(doc.id)}
-                    style={{ padding: '4px 10px', fontSize: '0.8rem', cursor: 'pointer', borderRadius: '6px', border: '1px solid #dc2626', color: '#dc2626', background: 'transparent' }}
                   >
                     Delete
                   </button>

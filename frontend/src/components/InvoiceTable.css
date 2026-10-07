@@ -96,6 +96,22 @@
   text-decoration: line-through;
 }
 
+/* Document request statuses (shares status-overdue with invoices above) */
+.badge.status-pending {
+  background-color: var(--color-status-warning-bg);
+  color: var(--color-status-warning);
+}
+
+.badge.status-submitted {
+  background-color: var(--color-status-success-bg);
+  color: var(--color-status-success);
+}
+
+.badge.status-approved {
+  background-color: var(--color-status-neutral-bg);
+  color: var(--color-status-neutral);
+}
+
 /* Action Button */
 .btn-action {
   background: transparent;
