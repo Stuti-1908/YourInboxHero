@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, Numeric, Date, ForeignKey, Enum, UniqueConstraint
 from sqlalchemy.types import TIMESTAMP
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from .base import Base
 import enum
 import uuid
@@ -40,6 +41,13 @@ class Invoice(Base):
     invoice_number = Column(String, nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     description = Column(String)
+    # Issue date, shown on the PDF alongside due_date (standard invoice
+    # fields are distinct: when it was issued vs. when payment is due).
+    # server_default=func.now() so every DB-level insert gets a value
+    # without every call site needing to set it explicitly; the explicit
+    # Python-side default covers SQLite in tests, which doesn't always
+    # honor server_default the same way Postgres does.
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), default=func.now())
     due_date = Column(Date, nullable=False)
     payment_instructions = Column(String)
     payment_link = Column(String, nullable=True)

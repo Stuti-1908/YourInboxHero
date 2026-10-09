@@ -1,9 +1,14 @@
 """Account-level emails to our own customers (the business owner), distinct
 from src/services/email.py which sends invoice reminders to their debtors.
+
+These are branded as YourInboxHero (the vendor), not the customer's own
+company -- unlike the reminder emails in email.py, which go out under
+the customer's brand to their debtors.
 """
 from datetime import datetime, timezone
 
 import structlog
+from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -14,6 +19,8 @@ from src.services.email import _send_via_resend
 logger = structlog.get_logger(__name__)
 
 WARNING_THRESHOLD = 0.8  # fraction of chases_limit that triggers the 80% warning
+
+_jinja_env = Environment(loader=FileSystemLoader('templates'))
 
 
 def _plan_label(plan: str | None) -> str:
@@ -125,38 +132,56 @@ def maybe_send_usage_warnings(user: User, db: Session) -> None:
         logger.error("usage_warning_email_failed", user_id=user.id, error=str(exc))
 
 
-def _send_approaching_limit_email(user: User, used: int, limit: int) -> None:
+def _render_usage_warning(
+    user: User, used: int, limit: int, banner_text: str, banner_color: str, message_body: str,
+) -> str:
     settings = get_settings()
+    tmpl = _jinja_env.get_template('usage_warning_email.html')
+    return tmpl.render(
+        company_name=user.company_name or 'there',
+        plan_label=_plan_label(user.subscription_plan),
+        used=used,
+        limit=limit,
+        banner_text=banner_text,
+        banner_color=banner_color,
+        message_body=message_body,
+        settings_url=f"{settings.frontend_url}/dashboard/settings",
+        subject=banner_text,
+    )
+
+
+def _send_approaching_limit_email(user: User, used: int, limit: int) -> None:
     remaining = limit - used
     subject = f"You've used {used} of {limit} reminders this month"
-    html = f"""
-    <p>Hi {user.company_name or 'there'},</p>
-    <p>Your {_plan_label(user.subscription_plan)} plan includes <strong>{limit} automated
-    reminders</strong> a month, and you've sent <strong>{used}</strong> so far —
-    only <strong>{remaining}</strong> left.</p>
-    <p>Once you hit the limit, new reminders stop sending until next month or
-    until you upgrade. If you'd like more headroom, you can upgrade your plan
-    any time from Settings.</p>
-    <p>— {settings.resend_from_email.split('@')[0] if settings.resend_from_email else 'YourInboxHero'}</p>
-    """
+    message_body = (
+        f"Your {_plan_label(user.subscription_plan)} plan includes {limit} automated "
+        f"reminders a month, and you've sent {used} so far — only {remaining} left. "
+        "Once you hit the limit, new reminders stop sending until next month or until "
+        "you upgrade."
+    )
+    html = _render_usage_warning(
+        user, used, limit,
+        banner_text="80% of plan used", banner_color="#d97706",
+        message_body=message_body,
+    )
     _send_via_resend(to_email=user.username, subject=subject, html_body=html)
     logger.info("usage_warning_80_sent", user_id=user.id, used=used, limit=limit)
 
 
 def _send_limit_reached_email(user: User) -> None:
-    settings = get_settings()
     limit = user.chases_limit or 0
     subject = "You've reached your monthly reminder limit"
-    html = f"""
-    <p>Hi {user.company_name or 'there'},</p>
-    <p>You've used all <strong>{limit}</strong> automated reminders included in your
-    {_plan_label(user.subscription_plan)} plan this month. New reminders —
-    email, SMS, and voice — will stop sending until your plan renews next
-    month, or until you upgrade for more capacity.</p>
-    <p>You can upgrade any time from Settings to keep reminders going without
-    interruption.</p>
-    <p>— {settings.resend_from_email.split('@')[0] if settings.resend_from_email else 'YourInboxHero'}</p>
-    """
+    message_body = (
+        f"You've used all {limit} automated reminders included in your "
+        f"{_plan_label(user.subscription_plan)} plan this month. New reminders — email, "
+        "SMS, and voice — will stop sending until your plan renews next month, or until "
+        "you upgrade for more capacity."
+    )
+    html = _render_usage_warning(
+        user, limit, limit,
+        banner_text="Monthly limit reached", banner_color="#dc2626",
+        message_body=message_body,
+    )
     _send_via_resend(to_email=user.username, subject=subject, html_body=html)
     logger.warning("usage_limit_reached_email_sent", user_id=user.id, limit=limit)
 
@@ -177,11 +202,7 @@ def send_verification_email(user: User) -> None:
     settings = get_settings()
     verify_url = f"{settings.frontend_url}/verify-email?token={user.email_verification_token}"
     subject = "Verify your email to activate your YourInboxHero account"
-    html = f"""
-    <p>Hi {user.company_name or 'there'},</p>
-    <p>Click below to verify your email address and activate your account:</p>
-    <p><a href="{verify_url}">Verify my email</a></p>
-    <p>If you didn't create this account, you can safely ignore this email.</p>
-    """
+    tmpl = _jinja_env.get_template('account_verification_email.html')
+    html = tmpl.render(recipient_name=user.company_name or 'there', verify_url=verify_url)
     _send_via_resend(to_email=user.username, subject=subject, html_body=html)
     logger.info("verification_email_sent", user_id=user.id)

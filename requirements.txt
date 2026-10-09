@@ -8,6 +8,7 @@ jinja2
 pytest
 pytest-mock
 pytest-cov
+pypdf
 httpx
 pyjwt
 passlib[bcrypt]

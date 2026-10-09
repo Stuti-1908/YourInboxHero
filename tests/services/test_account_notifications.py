@@ -7,10 +7,10 @@ from src.models.user import User
 import uuid
 
 
-def _make_user(session, chases_limit=100, chases_used=0, warning_sent=False, limit_sent=False):
+def _make_user(session, chases_limit=100, chases_used=0, warning_sent=False, limit_sent=False, company_name="Test Co"):
     u = User(
         id=str(uuid.uuid4()), username=f"{uuid.uuid4().hex[:8]}@example.com",
-        hashed_password="pwd", company_name="Test Co",
+        hashed_password="pwd", company_name=company_name,
         subscription_plan="growth", subscription_status="active",
         chases_limit=chases_limit, chases_used=chases_used,
         usage_warning_80_sent=warning_sent, usage_limit_reached_sent=limit_sent,
@@ -115,6 +115,61 @@ def test_send_failure_is_logged_not_raised():
         session.commit()
         with patch('src.services.account_notifications._send_via_resend', side_effect=Exception('Resend down')):
             maybe_send_usage_warnings(user, session)  # must not raise
+    finally:
+        session.close()
+
+
+def test_warning_email_is_branded_as_yourinboxhero():
+    """These emails go to our own customers (the business owner), not
+    their debtors -- they must be branded as YourInboxHero, not the
+    customer's own company (unlike the reminder emails in email.py)."""
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=100, chases_used=80, company_name="Acme Co")
+        session.commit()
+        with patch('src.services.account_notifications._send_via_resend') as mock_send:
+            maybe_send_usage_warnings(user, session)
+            html = mock_send.call_args.kwargs['html_body']
+            assert 'YourInboxHero' in html
+            assert '<html' in html  # a real HTML document, not a bare string
+            assert 'Upgrade Plan' in html
+            assert '80' in html and '100' in html  # used / limit shown
+    finally:
+        session.close()
+
+
+def test_limit_reached_email_is_branded_and_shows_usage():
+    session = SessionLocal()
+    try:
+        user = _make_user(session, chases_limit=50, chases_used=50, warning_sent=True, company_name="Acme Co")
+        session.commit()
+        with patch('src.services.account_notifications._send_via_resend') as mock_send:
+            maybe_send_usage_warnings(user, session)
+            html = mock_send.call_args.kwargs['html_body']
+            assert 'YourInboxHero' in html
+            assert 'Monthly limit reached' in html
+            assert '50 / 50' in html
+    finally:
+        session.close()
+
+
+def test_verification_email_is_branded_and_includes_link():
+    from src.services.account_notifications import send_verification_email
+
+    session = SessionLocal()
+    try:
+        user = _make_user(session, company_name="Acme Co")
+        user.email_verification_token = "test-token-xyz"
+        session.commit()
+        with patch('src.services.account_notifications._send_via_resend') as mock_send:
+            send_verification_email(user)
+            mock_send.assert_called_once()
+            call_kwargs = mock_send.call_args.kwargs
+            assert call_kwargs['to_email'] == user.username
+            html = call_kwargs['html_body']
+            assert 'YourInboxHero' in html
+            assert 'test-token-xyz' in html
+            assert '<html' in html
     finally:
         session.close()
 
