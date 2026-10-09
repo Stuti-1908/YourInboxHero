@@ -384,6 +384,7 @@ export interface DocumentClient {
   name: string;
   email: string;
   phone?: string;
+  voice_call_consent: boolean;
 }
 
 export interface DocumentRequest {
@@ -404,6 +405,20 @@ export const getDocumentClients = async (): Promise<DocumentClient[]> => {
   const res = await fetch(`${API_BASE}/document-clients`, { headers: getAuthHeaders() });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to fetch document clients');
+  return await res.json();
+};
+
+export const updateDocumentClient = async (id: string, data: { name?: string; phone?: string; voice_call_consent?: boolean }): Promise<DocumentClient> => {
+  const res = await fetch(`${API_BASE}/document-clients/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to update document client');
+  }
   return await res.json();
 };
 

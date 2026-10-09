@@ -6,6 +6,7 @@ list/create/delete endpoints in document_request.py.
 """
 import uuid
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from src.app import app
@@ -48,8 +49,62 @@ def test_create_document_request_success():
     data = resp.json()
     assert data["title"] == "W-9 Form"
     assert data["status"] == "pending"
-    assert data["client"]["id"] == client_id
-    assert "upload_token" in data
+
+
+def test_create_document_request_sends_initial_email_to_client():
+    """The client must actually receive the upload link by email when a
+    request is created -- the 'Copy Link' button in the UI is a fallback
+    for the business owner, not the primary notification path."""
+    session = SessionLocal()
+    try:
+        doc_client = _make_client(session, name="Email Notify Co")
+        session.commit()
+        client_id = doc_client.id
+        client_email = doc_client.email
+    finally:
+        session.close()
+
+    payload = {
+        "client_id": client_id,
+        "title": "Signed Contract",
+        "due_date": str(date.today() + timedelta(days=7)),
+    }
+    with patch('src.services.document_email.send_document_request_email') as mock_send:
+        resp = client.post("/documents", json=payload)
+        assert resp.status_code == 200
+        mock_send.assert_called_once()
+        # Assert on plain already-loaded columns only -- sent_doc.client is
+        # a lazy-loaded relationship and the request's own DB session is
+        # already closed by the time we inspect the mock call here.
+        sent_doc = mock_send.call_args.args[0]
+        assert sent_doc.title == "Signed Contract"
+        assert resp.json()["client"]["email"] == client_email
+
+
+def test_create_document_request_succeeds_even_if_email_send_fails():
+    """A Resend outage must not block the request from being created --
+    the upload link still exists and can be shared manually, same
+    best-effort reasoning as the usage-warning emails."""
+    session = SessionLocal()
+    try:
+        doc_client = _make_client(session, name="Email Fail Co")
+        session.commit()
+        client_id = doc_client.id
+    finally:
+        session.close()
+
+    payload = {
+        "client_id": client_id,
+        "title": "Bank Statement",
+        "due_date": str(date.today() + timedelta(days=7)),
+    }
+    with patch('src.services.document_email.send_document_request_email', side_effect=Exception('Resend down')):
+        resp = client.post("/documents", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "pending"
+        assert data["client"]["id"] == client_id
+        assert "upload_token" in data
 
 
 def test_create_document_request_404_for_unknown_client():

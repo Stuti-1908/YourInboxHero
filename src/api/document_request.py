@@ -6,12 +6,16 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import date, datetime, timezone
 
+import structlog
+
 from src.db import get_db
 from src.auth import get_current_user, require_active_subscription
 from src.models.user import User
 from src.models.document_client import DocumentClient
 from src.models.document_request import DocumentRequest
 from src.services.document_storage import save_uploaded_document, get_document_path
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="", tags=["document_requests"])
 
@@ -100,6 +104,19 @@ def create_document_request(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+
+    # Send the initial notification so the client actually receives the
+    # upload link without the business owner needing to manually copy and
+    # paste it (the "Copy Link" button in the UI is a fallback, not the
+    # primary path). Best-effort: a send failure must not block the
+    # request from being created -- the link still exists and can be
+    # copied/resent manually, same reasoning as the chase-usage-warning
+    # emails in account_notifications.py.
+    try:
+        from src.services.document_email import send_document_request_email
+        send_document_request_email(doc)
+    except Exception as exc:
+        logger.error("document_request_initial_email_failed", doc_request_id=doc.id, error=str(exc))
 
     return {
         "id": doc.id,

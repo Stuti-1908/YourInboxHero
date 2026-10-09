@@ -24,8 +24,12 @@ from src.models.debtor import Debtor  # noqa: F401
 from src.models.invoice import Invoice, InvoiceStatus  # noqa: F401
 from src.models.reminder import ReminderLog  # noqa: F401
 from src.models.email_template import EmailTemplate  # noqa: F401
+from src.models.document_request import DocumentRequest  # noqa: F401
+from src.models.document_client import DocumentClient  # noqa: F401
 from src.services.overdue_service import transition_overdue
 from src.services.reminder_service import process_due_reminders
+from src.services.document_overdue_service import transition_overdue as transition_overdue_documents
+from src.services.document_reminder_service import process_due_document_reminders
 from src.config.settings import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -272,6 +276,156 @@ def run_voice_calls(db: Session):
             logger.error("voice_call_failed", invoice_id=str(inv.id), error=str(e), exc_info=True)
 
 
+def run_document_escalation_sweep(db: Session):
+    """Check all overdue document requests and escalate them through
+    tiers. Mirrors run_escalation_sweep exactly, for DocumentRequest
+    instead of Invoice."""
+    now = datetime.now(timezone.utc)
+
+    overdue_requests = db.query(DocumentRequest).filter(
+        DocumentRequest.status == "overdue",
+        DocumentRequest.escalation_tier.in_(["email", "sms"])
+    ).all()
+
+    for req in overdue_requests:
+        try:
+            if not req.escalation_started_at:
+                req.escalation_started_at = now
+                db.commit()
+                continue
+
+            days_in_tier = (now - _as_aware_utc(req.escalation_started_at)).days
+
+            if req.escalation_tier == "email" and days_in_tier >= EMAIL_TO_SMS_DAYS:
+                req.escalation_tier = "sms"
+                req.escalation_started_at = now
+                logger.info("document_request_escalated",
+                            doc_request_id=str(req.id), title=req.title,
+                            from_tier="email", to_tier="sms",
+                            days_in_tier=days_in_tier)
+                db.commit()
+
+            elif req.escalation_tier == "sms" and days_in_tier >= SMS_TO_VOICE_DAYS:
+                req.escalation_tier = "voice"
+                req.escalation_started_at = now
+                logger.info("document_request_escalated",
+                            doc_request_id=str(req.id), title=req.title,
+                            from_tier="sms", to_tier="voice",
+                            days_in_tier=days_in_tier)
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("document_escalation_step_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
+
+
+def run_document_sms_reminders(db: Session):
+    """Send SMS reminders for document requests in the SMS escalation
+    tier. Mirrors run_sms_reminders exactly."""
+    from src.services.ghl_service import send_sms
+    from src.services.usage_limits import can_send_chase, record_chase_used
+
+    sms_requests = db.query(DocumentRequest).filter(
+        DocumentRequest.status == "overdue",
+        DocumentRequest.escalation_tier == "sms"
+    ).all()
+
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc)
+
+    for req in sms_requests:
+        if req.last_reminder_sent and _as_aware_utc(req.last_reminder_sent) >= today_start:
+            continue
+
+        client = req.client
+        if not client.phone:
+            logger.warning("document_sms_skipped_no_phone", doc_request_id=str(req.id), client_name=client.name)
+            continue
+
+        user = client.user
+        if not can_send_chase(user):
+            logger.warning("document_sms_skipped_cannot_send_chase",
+                           doc_request_id=str(req.id), user_id=user.id,
+                           subscription_status=user.subscription_status,
+                           chases_used=user.chases_used, chases_limit=user.chases_limit)
+            continue
+
+        company_name = user.company_name or "YourInboxHero"
+        upload_url = f"{settings.frontend_url}/upload/{req.upload_token}"
+        message = (
+            f"Hi {client.name}, the document \"{req.title}\" requested by {company_name} is OVERDUE. "
+            f"Please upload it here: {upload_url}"
+        )
+
+        try:
+            success = send_sms(phone=client.phone, message=message, contact_name=client.name, contact_email=client.email)
+
+            if success:
+                req.sms_sent_count = (req.sms_sent_count or 0) + 1
+                req.last_reminder_sent = datetime.now(timezone.utc)
+                record_chase_used(user, db, channel='sms', invoice_id=str(req.id))
+                logger.info("document_sms_sent", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("document_sms_send_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
+
+
+def run_document_voice_calls(db: Session):
+    """Trigger voice calls for document requests in the voice escalation
+    tier. Mirrors run_voice_calls exactly, including the same
+    plan-tier/consent/quota gates."""
+    from src.services.ghl_service import trigger_voice_call
+    from src.services.usage_limits import can_send_chase, record_chase_used
+    from src.services.plan_features import plan_has_feature
+
+    voice_requests = db.query(DocumentRequest).filter(
+        DocumentRequest.status == "overdue",
+        DocumentRequest.escalation_tier == "voice"
+    ).all()
+
+    for req in voice_requests:
+        if req.last_reminder_sent and (datetime.now(timezone.utc) - _as_aware_utc(req.last_reminder_sent)).days < 3:
+            continue
+
+        client = req.client
+        if not client.phone:
+            logger.warning("document_voice_call_skipped_no_phone", doc_request_id=str(req.id), client_name=client.name)
+            continue
+
+        if not client.voice_call_consent:
+            logger.info("document_voice_call_skipped_no_consent", doc_request_id=str(req.id), client_id=client.id)
+            continue
+
+        user = client.user
+        if not plan_has_feature(user.subscription_plan, "voice_escalation"):
+            logger.info("document_voice_call_skipped_plan_tier", doc_request_id=str(req.id), user_id=user.id, plan=user.subscription_plan)
+            continue
+        if not can_send_chase(user):
+            logger.warning("document_voice_call_skipped_cannot_send_chase",
+                           doc_request_id=str(req.id), user_id=user.id,
+                           subscription_status=user.subscription_status,
+                           chases_used=user.chases_used, chases_limit=user.chases_limit)
+            continue
+
+        company_name = user.company_name or "YourInboxHero"
+        message = (
+            f"This is an automated call from {company_name}. The document \"{req.title}\" "
+            f"we requested is overdue. Please upload it as soon as possible."
+        )
+
+        try:
+            success = trigger_voice_call(phone=client.phone, message=message, contact_name=client.name, contact_email=client.email)
+
+            if success:
+                req.voice_call_count = (req.voice_call_count or 0) + 1
+                req.last_reminder_sent = datetime.now(timezone.utc)
+                record_chase_used(user, db, channel='voice', invoice_id=str(req.id))
+                logger.info("document_voice_call_triggered", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error("document_voice_call_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
+
+
 SWEEP_RUN_ID = "daily_sweep"
 
 
@@ -307,13 +461,19 @@ def run_daily_sweep():
             ("escalation_sweep", lambda: run_escalation_sweep(db)),
             ("sms_reminders", lambda: run_sms_reminders(db)),
             ("voice_calls", lambda: run_voice_calls(db)),
+            ("document_overdue_transition", lambda: transition_overdue_documents(db)),
+            ("document_pre_due_reminders", lambda: process_due_document_reminders() if settings.reminders_enabled
+                else logger.info("document_reminders_disabled_via_settings")),
+            ("document_escalation_sweep", lambda: run_document_escalation_sweep(db)),
+            ("document_sms_reminders", lambda: run_document_sms_reminders(db)),
+            ("document_voice_calls", lambda: run_document_voice_calls(db)),
             ("admin_invite_usage_reset", lambda: reset_admin_invite_usage(db)),
         ]
         for step_name, step_fn in steps:
             try:
                 result = step_fn()
-                if step_name == "overdue_transition":
-                    logger.info("overdue_transition_completed", count=result)
+                if step_name in ("overdue_transition", "document_overdue_transition"):
+                    logger.info(f"{step_name}_completed", count=result)
                 elif step_name == "admin_invite_usage_reset" and result:
                     logger.info("admin_invite_usage_reset_completed", count=result)
             except Exception as e:
