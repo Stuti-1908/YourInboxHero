@@ -7,18 +7,29 @@ export const DocumentTable: React.FC = () => {
   const [docs, setDocs] = useState<DocumentRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadDocs = async () => {
+  // silent=true skips the full-page loading spinner, used for the
+  // background poll below so an in-progress refresh doesn't flash the
+  // whole table away every 20s -- only the initial mount shows it.
+  const loadDocs = async (silent = false) => {
     try {
       const data = await fetchDocumentRequests();
       setDocs(data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  useEffect(() => { loadDocs(); }, []);
+  useEffect(() => {
+    loadDocs();
+    // Clients submit documents asynchronously, often minutes/hours after
+    // the business owner last had this tab open -- poll for status
+    // changes (pending -> submitted, escalation tier changes) rather
+    // than requiring a manual page reload to see them.
+    const interval = setInterval(() => loadDocs(true), 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this document request?')) return;
