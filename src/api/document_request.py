@@ -31,6 +31,7 @@ class DocumentClientOut(BaseModel):
     id: str
     name: str
     email: str
+    voice_call_consent: bool
 
 
 class DocumentRequestResponse(BaseModel):
@@ -73,7 +74,8 @@ def list_document_requests(
             "client": {
                 "id": doc.client.id,
                 "name": doc.client.name,
-                "email": doc.client.email
+                "email": doc.client.email,
+                "voice_call_consent": doc.client.voice_call_consent
             }
         })
     return results
@@ -132,7 +134,8 @@ def create_document_request(
         "client": {
             "id": client.id,
             "name": client.name,
-            "email": client.email
+            "email": client.email,
+            "voice_call_consent": client.voice_call_consent
         }
     }
 
@@ -229,3 +232,27 @@ def download_document(
         path=path,
         filename=doc.uploaded_file_name or path.name,
     )
+
+class DocumentRequestUpdateStatus(BaseModel):
+    status: str
+
+@router.put("/documents/{doc_id}/status")
+def update_document_status(
+    doc_id: str,
+    data: DocumentRequestUpdateStatus,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
+):
+    doc = db.query(DocumentRequest).filter(
+        DocumentRequest.id == doc_id,
+        DocumentRequest.user_id == current_user.id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document request not found")
+        
+    doc.status = data.status
+    if data.status == "submitted" and not doc.uploaded_at:
+        doc.uploaded_at = datetime.now(timezone.utc)
+        
+    db.commit()
+    return {"msg": f"Document status updated to {data.status}"}

@@ -443,6 +443,16 @@ export const fetchDocumentRequests = async (): Promise<DocumentRequest[]> => {
   return await res.json();
 };
 
+export const updateDocumentStatus = async (id: string, status: string): Promise<void> => {
+  const res = await fetch(`${API_BASE}/documents/${id}/status`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ status })
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) throw new Error('Failed to update document status');
+};
+
 export const createDocumentRequest = async (data: { client_id: string; title: string; description?: string; due_date: string }): Promise<DocumentRequest> => {
   const res = await fetch(`${API_BASE}/documents`, {
     method: 'POST',
