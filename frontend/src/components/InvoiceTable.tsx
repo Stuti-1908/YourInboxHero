@@ -7,10 +7,27 @@ export const InvoiceTable = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState('');
 
+  // silent=true skips surfacing errors to the user, used for the
+  // background poll below so a transient network blip doesn't flash
+  // an error banner every 20s -- only the initial mount shows errors.
+  const loadInvoices = async (silent = false) => {
+    try {
+      const data = await fetchInvoices();
+      setInvoices(data);
+    } catch (err: any) {
+      if (!silent) setError(err.message);
+    }
+  };
+
   useEffect(() => {
-    fetchInvoices()
-      .then(setInvoices)
-      .catch(err => setError(err.message));
+    loadInvoices();
+    // Invoice status can change outside this tab's own actions -- the
+    // scheduler marking invoices overdue, another team member pausing
+    // reminders, or a webhook marking one paid.  Poll every 20s so
+    // the table stays current without a manual reload, matching the
+    // same interval already used by DocumentTable.
+    const interval = setInterval(() => loadInvoices(true), 20000);
+    return () => clearInterval(interval);
   }, []);
 
   const handlePause = async (id: string) => {
