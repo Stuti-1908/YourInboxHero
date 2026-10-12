@@ -5,10 +5,6 @@ import secrets
 from .base import Base
 
 
-def generate_webhook_secret():
-    return f"wh_sec_{secrets.token_hex(16)}"
-
-
 def generate_email_verification_token():
     return secrets.token_urlsafe(32)
 
@@ -32,8 +28,6 @@ class User(Base):
     smtp_username = Column(String, nullable=True)
     smtp_password = Column(String, nullable=True)
     smtp_from_email = Column(String, nullable=True)
-    webhook_secret = Column(String, unique=True, nullable=False, default=generate_webhook_secret)
-    ghl_webhook_signing_secret = Column(String, nullable=True)  # For GHL webhook HMAC verification
     is_active = Column(Boolean, default=True)
     # Subscription tracking
     subscription_plan = Column(String, nullable=True)  # 'starter', 'growth', 'scale'

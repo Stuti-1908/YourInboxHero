@@ -254,7 +254,6 @@ class UserSettingsUpdate(BaseModel):
     smtp_username: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from_email: Optional[str] = None
-    ghl_webhook_signing_secret: Optional[str] = None
 
 
 @router.get("/users/me")
@@ -275,11 +274,6 @@ def get_me(current_user: User = Depends(get_current_user)):
         # if the user had typed it, and there's no legitimate UI need to
         # display it.
         "smtp_from_email": current_user.smtp_from_email,
-        "webhook_secret": current_user.webhook_secret,
-        # Mirrors the smtp_password pattern: the secret itself is never
-        # returned (encrypted or not), only whether one is configured, so
-        # the frontend can show connected/not-connected state.
-        "ghl_signature_verification_configured": bool(current_user.ghl_webhook_signing_secret),
         "subscription_plan": current_user.subscription_plan,
         "subscription_status": current_user.subscription_status,
         "chases_limit": current_user.chases_limit or 0,
@@ -320,17 +314,6 @@ def update_me(
         # since encrypt_secret("") would produce a real ciphertext that
         # decrypts back to "", adding no value and a wasted encrypt call.
         user.smtp_password = encrypt_secret(settings.smtp_password) if settings.smtp_password else ""
-    if settings.ghl_webhook_signing_secret is not None:
-        # Previously accepted by this model but never actually assigned
-        # here — the field existed on UserSettingsUpdate, so a request
-        # that sent it got a 200 OK, but the secret was silently discarded
-        # and GHL webhook signature verification stayed permanently
-        # unconfigured for every customer. Encrypted at rest for the same
-        # reason smtp_password is: it's compared against, never displayed,
-        # so there's no legitimate reason to ever read it back in plaintext.
-        user.ghl_webhook_signing_secret = (
-            encrypt_secret(settings.ghl_webhook_signing_secret) if settings.ghl_webhook_signing_secret else ""
-        )
     if settings.smtp_from_email is not None:
         user.smtp_from_email = settings.smtp_from_email
 

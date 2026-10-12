@@ -252,9 +252,6 @@ async def readiness_probe(request: Request, db: Session = Depends(get_db)):
 app.include_router(auth_router, prefix="")
 app.include_router(health_router, prefix="")
 
-from src.api.webhooks import router as webhooks_router
-app.include_router(webhooks_router, prefix="/api/webhooks")
-
 from src.api.debtor import router as debtor_router
 from src.api.invoice_create import router as invoice_create_router
 from src.api.invoice_import import router as invoice_import_router
@@ -295,7 +292,6 @@ api_v1 = APIRouter(prefix="/api/v1")
 # Public routes (v1)
 api_v1.include_router(auth_router, prefix="")
 api_v1.include_router(health_router, prefix="")
-api_v1.include_router(webhooks_router, prefix="/webhooks")
 
 from src.api.debtor import router as debtor_router
 from src.api.invoice_create import router as invoice_create_router
