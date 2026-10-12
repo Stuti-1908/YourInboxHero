@@ -96,6 +96,53 @@ def test_send_sms_success(monkeypatch):
     assert call_kwargs["json"]["contactId"] == "contact-1"
 
 
+def test_find_or_create_contact_recovers_from_duplicate_on_create(monkeypatch):
+    """Regression test: GHL's search is a fuzzy text search, not an exact
+    match, so it can miss a contact that actually exists (indexing lag,
+    formatting, etc.). When that happens, POST /contacts/ fails with a 400
+    duplicate-contact error. We must re-search (by phone) and recover the
+    existing contact rather than permanently failing SMS/voice for that
+    debtor on every future chase."""
+    _mock_settings(monkeypatch)
+
+    empty_search_resp = MagicMock()
+    empty_search_resp.json.return_value = {"contacts": []}
+    empty_search_resp.raise_for_status = lambda: None
+
+    create_resp = MagicMock()
+    create_resp.raise_for_status = MagicMock(side_effect=Exception("400 Client Error: Bad Request"))
+
+    found_by_phone_resp = MagicMock()
+    found_by_phone_resp.json.return_value = {"contacts": [{"id": "existing-contact-1"}]}
+    found_by_phone_resp.raise_for_status = lambda: None
+
+    with patch("src.services.ghl_service.requests.get", side_effect=[empty_search_resp, found_by_phone_resp]) as mock_get, \
+        patch("src.services.ghl_service.requests.post", return_value=create_resp):
+        contact_id = ghl_service.find_or_create_contact("Jane Doe", "jane@example.com", "+15551234567")
+
+    assert contact_id == "existing-contact-1"
+    assert mock_get.call_count == 2
+    second_call_params = mock_get.call_args_list[1].kwargs["params"]
+    assert second_call_params["query"] == "+15551234567"
+
+
+def test_find_or_create_contact_returns_none_when_create_and_research_both_fail(monkeypatch):
+    _mock_settings(monkeypatch)
+
+    empty_search_resp = MagicMock()
+    empty_search_resp.json.return_value = {"contacts": []}
+    empty_search_resp.raise_for_status = lambda: None
+
+    create_resp = MagicMock()
+    create_resp.raise_for_status = MagicMock(side_effect=Exception("400 Client Error: Bad Request"))
+
+    with patch("src.services.ghl_service.requests.get", side_effect=[empty_search_resp, Exception("network error")]), \
+        patch("src.services.ghl_service.requests.post", return_value=create_resp):
+        contact_id = ghl_service.find_or_create_contact("Jane Doe", "jane@example.com", "+15551234567")
+
+    assert contact_id is None
+
+
 def test_send_sms_fails_when_contact_lookup_fails(monkeypatch):
     _mock_settings(monkeypatch)
     with patch("src.services.ghl_service.requests.get", side_effect=Exception("network error")), \

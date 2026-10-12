@@ -32,6 +32,17 @@ def _get_location_id() -> str:
     return get_settings().ghl_location_id or ""
 
 
+def _search_contact(headers: dict, location_id: str, query: str) -> Optional[str]:
+    resp = requests.get(
+        f"{GHL_BASE_URL}/contacts/",
+        headers=headers,
+        params={"locationId": location_id, "query": query}
+    )
+    resp.raise_for_status()
+    contacts = resp.json().get("contacts", [])
+    return contacts[0]["id"] if contacts else None
+
+
 def find_or_create_contact(name: str, email: str, phone: str) -> Optional[str]:
     """Find an existing GHL contact by email, or create a new one.
     Returns the GHL contact ID or None if GHL is not configured."""
@@ -42,15 +53,9 @@ def find_or_create_contact(name: str, email: str, phone: str) -> Optional[str]:
 
     # Search by email first
     try:
-        resp = requests.get(
-            f"{GHL_BASE_URL}/contacts/",
-            headers=headers,
-            params={"locationId": location_id, "query": email}
-        )
-        resp.raise_for_status()
-        contacts = resp.json().get("contacts", [])
-        if contacts:
-            return contacts[0]["id"]
+        contact_id = _search_contact(headers, location_id, email)
+        if contact_id:
+            return contact_id
     except Exception as e:
         logging.error(f"GHL contact search failed: {e}")
 
@@ -69,7 +74,20 @@ def find_or_create_contact(name: str, email: str, phone: str) -> Optional[str]:
         resp.raise_for_status()
         return resp.json().get("contact", {}).get("id")
     except Exception as e:
+        # GHL's search-by-query is a fuzzy text search, not an exact-match
+        # lookup, so it can miss a contact that genuinely already exists
+        # (indexing lag, formatting differences, etc.) -- when that happens,
+        # creation fails with a 400 "duplicate contact" error. Re-searching
+        # by phone (GHL's dedupe key for this error) recovers the existing
+        # contact instead of permanently failing SMS/voice for any debtor
+        # who already has a GHL contact from a prior reminder.
         logging.error(f"GHL contact creation failed: {e}")
+        try:
+            contact_id = _search_contact(headers, location_id, phone)
+            if contact_id:
+                return contact_id
+        except Exception as e2:
+            logging.error(f"GHL contact re-search after failed creation also failed: {e2}")
         return None
 
 
