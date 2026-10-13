@@ -53,3 +53,11 @@ class User(Base):
     # src/services/account_notifications.py) only resets once per monthly
     # anniversary of subscription_started_at, not every time it runs.
     usage_reset_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    # Voice-call calling-window restrictions (TCPA-style business-hours
+    # courtesy, not just a legal minimum) -- see src/services/call_window.py.
+    # Stored per-user so each customer can narrow (never widen beyond
+    # Mon-Sun 00-24) their own default of Mon-Fri 9am-5pm America/New_York.
+    voice_call_days = Column(String, nullable=False, default="mon,tue,wed,thu,fri")
+    voice_call_start_hour = Column(Integer, nullable=False, default=9)
+    voice_call_end_hour = Column(Integer, nullable=False, default=17)
+    voice_call_timezone = Column(String, nullable=False, default="America/New_York")

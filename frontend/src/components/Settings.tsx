@@ -13,6 +13,30 @@ export const Settings = () => {
     logo_base64: ''
   });
 
+  const ALL_DAYS: { code: string; label: string }[] = [
+    { code: 'mon', label: 'Mon' },
+    { code: 'tue', label: 'Tue' },
+    { code: 'wed', label: 'Wed' },
+    { code: 'thu', label: 'Thu' },
+    { code: 'fri', label: 'Fri' },
+    { code: 'sat', label: 'Sat' },
+    { code: 'sun', label: 'Sun' },
+  ];
+  const COMMON_TIMEZONES = [
+    'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    'America/Anchorage', 'Pacific/Honolulu', 'UTC', 'Europe/London', 'Asia/Kolkata',
+  ];
+  const [voiceCallDays, setVoiceCallDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri']);
+  const [voiceCallStartHour, setVoiceCallStartHour] = useState(9);
+  const [voiceCallEndHour, setVoiceCallEndHour] = useState(17);
+  const [voiceCallTimezone, setVoiceCallTimezone] = useState('America/New_York');
+
+  const toggleVoiceCallDay = (code: string) => {
+    setVoiceCallDays(prev =>
+      prev.includes(code) ? prev.filter(d => d !== code) : [...prev, code]
+    );
+  };
+
   useEffect(() => {
     fetchSettings();
   }, []);
@@ -27,6 +51,15 @@ export const Settings = () => {
         company_name: data.company_name || '',
         logo_base64: data.logo_base64 || ''
       });
+      setVoiceCallDays(
+        (data.voice_call_days || 'mon,tue,wed,thu,fri')
+          .split(',')
+          .map((d: string) => d.trim())
+          .filter(Boolean)
+      );
+      setVoiceCallStartHour(data.voice_call_start_hour ?? 9);
+      setVoiceCallEndHour(data.voice_call_end_hour ?? 17);
+      setVoiceCallTimezone(data.voice_call_timezone || 'America/New_York');
     } catch (err) {
       console.error(err);
     } finally {
@@ -53,8 +86,24 @@ export const Settings = () => {
     e.preventDefault();
     setSaving(true);
     setMessage('');
+    if (voiceCallDays.length === 0) {
+      setMessage('Select at least one day for voice calls.');
+      setSaving(false);
+      return;
+    }
+    if (voiceCallStartHour >= voiceCallEndHour) {
+      setMessage('Voice call start time must be before end time.');
+      setSaving(false);
+      return;
+    }
     try {
-      await updateSettings(settings);
+      await updateSettings({
+        ...settings,
+        voice_call_days: voiceCallDays.join(','),
+        voice_call_start_hour: voiceCallStartHour,
+        voice_call_end_hour: voiceCallEndHour,
+        voice_call_timezone: voiceCallTimezone,
+      });
       setMessage('Settings updated successfully!');
       if (settings.company_name) {
         localStorage.setItem('company_name', settings.company_name);
@@ -109,6 +158,71 @@ export const Settings = () => {
         </p>
       </div>
 
+      <div className="settings-card" style={{ marginTop: '20px' }}>
+        <h3>Voice Call Hours</h3>
+        <p style={{ fontSize: '0.9rem', color: 'var(--color-text-light)' }}>
+          Automated voice call escalation will only be placed on the days and hours below, in your chosen timezone.
+        </p>
+
+        <div className="form-group" style={{ marginTop: '10px' }}>
+          <label className="form-label">Days</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {ALL_DAYS.map(({ code, label }) => {
+              const active = voiceCallDays.includes(code);
+              return (
+                <button
+                  type="button"
+                  key={code}
+                  onClick={() => toggleVoiceCallDay(code)}
+                  className={active ? 'btn-primary' : 'btn-secondary'}
+                  style={{ padding: '6px 14px', fontSize: '0.85rem' }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
+          <div className="form-group" style={{ flex: '1', minWidth: '140px' }}>
+            <label className="form-label">Start Hour</label>
+            <select
+              className="form-input"
+              value={voiceCallStartHour}
+              onChange={(e) => setVoiceCallStartHour(Number(e.target.value))}
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{h.toString().padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: '1', minWidth: '140px' }}>
+            <label className="form-label">End Hour</label>
+            <select
+              className="form-input"
+              value={voiceCallEndHour}
+              onChange={(e) => setVoiceCallEndHour(Number(e.target.value))}
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{h.toString().padStart(2, '0')}:00</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: '1', minWidth: '180px' }}>
+            <label className="form-label">Timezone</label>
+            <select
+              className="form-input"
+              value={voiceCallTimezone}
+              onChange={(e) => setVoiceCallTimezone(e.target.value)}
+            >
+              {COMMON_TIMEZONES.map(tz => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
 
     </div>
   );

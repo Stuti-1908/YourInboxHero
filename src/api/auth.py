@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import uuid
 
 from src.db import get_db
@@ -246,6 +247,9 @@ def resend_verification(request: Request, data: ResendVerificationRequest, db: S
 from src.auth import get_current_user
 
 
+_VALID_DAY_CODES = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+
+
 class UserSettingsUpdate(BaseModel):
     company_name: Optional[str] = None
     logo_base64: Optional[str] = None
@@ -254,6 +258,10 @@ class UserSettingsUpdate(BaseModel):
     smtp_username: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from_email: Optional[str] = None
+    voice_call_days: Optional[str] = None
+    voice_call_start_hour: Optional[int] = None
+    voice_call_end_hour: Optional[int] = None
+    voice_call_timezone: Optional[str] = None
 
 
 @router.get("/users/me")
@@ -274,6 +282,10 @@ def get_me(current_user: User = Depends(get_current_user)):
         # if the user had typed it, and there's no legitimate UI need to
         # display it.
         "smtp_from_email": current_user.smtp_from_email,
+        "voice_call_days": current_user.voice_call_days,
+        "voice_call_start_hour": current_user.voice_call_start_hour,
+        "voice_call_end_hour": current_user.voice_call_end_hour,
+        "voice_call_timezone": current_user.voice_call_timezone,
         "subscription_plan": current_user.subscription_plan,
         "subscription_status": current_user.subscription_status,
         "chases_limit": current_user.chases_limit or 0,
@@ -316,6 +328,28 @@ def update_me(
         user.smtp_password = encrypt_secret(settings.smtp_password) if settings.smtp_password else ""
     if settings.smtp_from_email is not None:
         user.smtp_from_email = settings.smtp_from_email
+    if settings.voice_call_days is not None:
+        days = {d.strip().lower() for d in settings.voice_call_days.split(",") if d.strip()}
+        if not days or not days.issubset(_VALID_DAY_CODES):
+            raise HTTPException(status_code=422, detail="voice_call_days must be a comma-separated list of mon,tue,wed,thu,fri,sat,sun")
+        user.voice_call_days = settings.voice_call_days
+    if settings.voice_call_start_hour is not None:
+        if not (0 <= settings.voice_call_start_hour <= 23):
+            raise HTTPException(status_code=422, detail="voice_call_start_hour must be between 0 and 23")
+        user.voice_call_start_hour = settings.voice_call_start_hour
+    if settings.voice_call_end_hour is not None:
+        if not (0 <= settings.voice_call_end_hour <= 23):
+            raise HTTPException(status_code=422, detail="voice_call_end_hour must be between 0 and 23")
+        user.voice_call_end_hour = settings.voice_call_end_hour
+    if settings.voice_call_timezone is not None:
+        try:
+            ZoneInfo(settings.voice_call_timezone)
+        except Exception:
+            raise HTTPException(status_code=422, detail="voice_call_timezone must be a valid IANA timezone, e.g. America/New_York")
+        user.voice_call_timezone = settings.voice_call_timezone
+    if (settings.voice_call_start_hour is not None or settings.voice_call_end_hour is not None):
+        if user.voice_call_start_hour >= user.voice_call_end_hour:
+            raise HTTPException(status_code=422, detail="voice_call_start_hour must be before voice_call_end_hour")
 
     db.commit()
     return {"msg": "Settings updated successfully"}

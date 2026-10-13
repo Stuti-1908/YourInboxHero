@@ -178,6 +178,47 @@ def test_voice_calls_skips_debtor_without_consent():
         session.close()
 
 
+def test_voice_calls_skips_when_outside_users_calling_window():
+    """Voice calls must never fire outside the user's configured calling
+    window (default Mon-Fri 9am-5pm America/New_York) — checked last,
+    after consent/plan/quota, so it's the final gate before dialing out."""
+    from zoneinfo import ZoneInfo
+
+    session = SessionLocal()
+    try:
+        user = _make_user(session)
+        # Pick the day after "today" (in the user's own timezone) so this
+        # test can never coincidentally run inside the allowed window.
+        today_code = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][
+            datetime.now(ZoneInfo("America/New_York")).weekday()
+        ]
+        all_days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+        user.voice_call_days = all_days[(all_days.index(today_code) + 1) % 7]
+        debtor = _make_debtor(session, phone="+15551234567", voice_call_consent=True, user_id=user.id)
+        inv = _make_overdue_invoice(
+            session, debtor, escalation_tier="voice",
+            escalation_started_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        session.commit()
+        inv_id = inv.id
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        run_voice_calls(session)
+    finally:
+        session.close()
+
+    session = SessionLocal()
+    try:
+        refreshed = session.query(Invoice).filter(Invoice.id == inv_id).first()
+        assert refreshed.voice_call_count == 0
+        assert refreshed.last_reminder_sent is None
+    finally:
+        session.close()
+
+
 def test_sms_reminders_skips_debtor_of_cancelled_subscription():
     session = SessionLocal()
     try:

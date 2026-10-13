@@ -549,3 +549,151 @@ def test_update_me_disconnect_smtp_stores_empty_not_encrypted_empty():
         assert user.smtp_password == ""
     finally:
         session.close()
+
+
+def _make_active_user_for_voice_settings():
+    username = f"voicesettings_{uuid.uuid4().hex[:8]}@example.com"
+    session = SessionLocal()
+    try:
+        db_user = User(
+            username=username, hashed_password=get_password_hash("pw"),
+            email_verified=True, subscription_status="active",
+        )
+        session.add(db_user)
+        session.commit()
+        return db_user.id, username
+    finally:
+        session.close()
+
+
+def test_get_me_returns_voice_call_window_defaults():
+    from src.auth import get_current_user
+
+    user_id, username = _make_active_user_for_voice_settings()
+
+    # get_me reads straight off current_user with no DB re-fetch, so the
+    # override must return the real persisted row (with its Column
+    # defaults applied at INSERT) rather than a bare User(...) built
+    # in-memory here, which would never have picked those defaults up.
+    def _load_current_user():
+        session = SessionLocal()
+        try:
+            return session.query(User).filter_by(id=user_id).first()
+        finally:
+            session.close()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = _load_current_user
+        client = TestClient(app)
+        resp = client.get("/users/me")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["voice_call_days"] == "mon,tue,wed,thu,fri"
+        assert data["voice_call_start_hour"] == 9
+        assert data["voice_call_end_hour"] == 17
+        assert data["voice_call_timezone"] == "America/New_York"
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_update_me_persists_voice_call_window_settings():
+    from src.auth import get_current_user
+
+    user_id, username = _make_active_user_for_voice_settings()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={
+            "voice_call_days": "sat,sun",
+            "voice_call_start_hour": 10,
+            "voice_call_end_hour": 12,
+            "voice_call_timezone": "Asia/Kolkata",
+        })
+        assert resp.status_code == 200
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        assert user.voice_call_days == "sat,sun"
+        assert user.voice_call_start_hour == 10
+        assert user.voice_call_end_hour == 12
+        assert user.voice_call_timezone == "Asia/Kolkata"
+    finally:
+        session.close()
+
+
+def test_update_me_rejects_invalid_voice_call_days():
+    from src.auth import get_current_user
+
+    user_id, username = _make_active_user_for_voice_settings()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={"voice_call_days": "funday"})
+        assert resp.status_code == 422
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_update_me_rejects_invalid_voice_call_timezone():
+    from src.auth import get_current_user
+
+    user_id, username = _make_active_user_for_voice_settings()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={"voice_call_timezone": "Not/A_Real_Zone"})
+        assert resp.status_code == 422
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_update_me_rejects_start_hour_after_end_hour():
+    from src.auth import get_current_user
+
+    user_id, username = _make_active_user_for_voice_settings()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        client = TestClient(app)
+        resp = client.put("/users/me", json={"voice_call_start_hour": 18, "voice_call_end_hour": 9})
+        assert resp.status_code == 422
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)

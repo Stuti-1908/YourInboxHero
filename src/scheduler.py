@@ -208,6 +208,7 @@ def run_voice_calls(db: Session):
     from src.services.ghl_service import trigger_voice_call
     from src.services.usage_limits import can_send_chase, record_chase_used
     from src.services.plan_features import plan_has_feature
+    from src.services.call_window import is_within_calling_window
 
     voice_invoices = db.query(Invoice).filter(
         Invoice.status == InvoiceStatus.overdue,
@@ -220,6 +221,7 @@ def run_voice_calls(db: Session):
             continue
 
         debtor = inv.debtor
+
         if not debtor.phone:
             logger.warning("voice_call_skipped_no_phone",
                            invoice_id=str(inv.id),
@@ -246,6 +248,11 @@ def run_voice_calls(db: Session):
                            subscription_status=user.subscription_status,
                            chases_used=user.chases_used,
                            chases_limit=user.chases_limit)
+            continue
+        if not is_within_calling_window(user):
+            logger.info("voice_call_skipped_outside_calling_window",
+                        invoice_id=str(inv.id),
+                        user_id=user.id)
             continue
         company_name = user.company_name or "YourInboxHero"
         message = (
@@ -376,6 +383,7 @@ def run_document_voice_calls(db: Session):
     from src.services.ghl_service import trigger_voice_call
     from src.services.usage_limits import can_send_chase, record_chase_used
     from src.services.plan_features import plan_has_feature
+    from src.services.call_window import is_within_calling_window
 
     voice_requests = db.query(DocumentRequest).filter(
         DocumentRequest.status == "overdue",
@@ -387,6 +395,7 @@ def run_document_voice_calls(db: Session):
             continue
 
         client = req.client
+
         if not client.phone:
             logger.warning("document_voice_call_skipped_no_phone", doc_request_id=str(req.id), client_name=client.name)
             continue
@@ -404,6 +413,9 @@ def run_document_voice_calls(db: Session):
                            doc_request_id=str(req.id), user_id=user.id,
                            subscription_status=user.subscription_status,
                            chases_used=user.chases_used, chases_limit=user.chases_limit)
+            continue
+        if not is_within_calling_window(user):
+            logger.info("document_voice_call_skipped_outside_calling_window", doc_request_id=str(req.id), user_id=user.id)
             continue
 
         company_name = user.company_name or "YourInboxHero"
@@ -460,13 +472,11 @@ def run_daily_sweep():
                 else logger.info("reminders_disabled_via_settings")),
             ("escalation_sweep", lambda: run_escalation_sweep(db)),
             ("sms_reminders", lambda: run_sms_reminders(db)),
-            ("voice_calls", lambda: run_voice_calls(db)),
             ("document_overdue_transition", lambda: transition_overdue_documents(db)),
             ("document_pre_due_reminders", lambda: process_due_document_reminders() if settings.reminders_enabled
                 else logger.info("document_reminders_disabled_via_settings")),
             ("document_escalation_sweep", lambda: run_document_escalation_sweep(db)),
             ("document_sms_reminders", lambda: run_document_sms_reminders(db)),
-            ("document_voice_calls", lambda: run_document_voice_calls(db)),
             ("admin_invite_usage_reset", lambda: reset_admin_invite_usage(db)),
         ]
         for step_name, step_fn in steps:
@@ -487,6 +497,31 @@ def run_daily_sweep():
         db.close()
 
     logger.info("daily_sweep_completed")
+
+
+def run_voice_calls_hourly():
+    """Separate from the once-daily 08:00 UTC sweep, since a single run
+    that early (~3-4am America/New_York) can never fall inside any
+    customer's business-hours calling window. Runs every hour; each
+    user's own voice_call_days/start_hour/end_hour/timezone (checked via
+    is_within_calling_window) decides whether this hour's run actually
+    places calls for them."""
+    logger.info("voice_calls_hourly_started")
+    db: Session = SessionLocal()
+    try:
+        try:
+            run_voice_calls(db)
+        except Exception as e:
+            logger.error("voice_calls_hourly_step_failed", step="voice_calls", error=str(e), exc_info=True)
+        try:
+            run_document_voice_calls(db)
+        except Exception as e:
+            logger.error("voice_calls_hourly_step_failed", step="document_voice_calls", error=str(e), exc_info=True)
+    except Exception as e:
+        logger.error("voice_calls_hourly_failed", error=str(e), exc_info=True)
+    finally:
+        db.close()
+    logger.info("voice_calls_hourly_completed")
 
 
 def run_catch_up_sweep_if_needed():
@@ -523,6 +558,15 @@ def start_scheduler():
         replace_existing=True,
         max_instances=1,  # Prevent overlapping runs
         coalesce=True,    # Combine missed runs
+    )
+    scheduler.add_job(
+        run_voice_calls_hourly,
+        trigger=CronTrigger(minute=0, timezone="UTC"),
+        id="voice_calls_hourly_job",
+        name="Hourly Voice Call Window Check",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
     scheduler.start()
     logger.info("scheduler_started", job_id="daily_sweep_job")
