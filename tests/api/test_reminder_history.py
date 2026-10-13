@@ -69,6 +69,11 @@ def test_history_json_returns_entries():
     for lid in log_ids:
         assert lid in returned_ids
 
+    by_id = {entry['id']: entry for entry in data}
+    for lid in log_ids:
+        assert by_id[lid]['debtor_name'] == "History Corp"
+        assert by_id[lid]['invoice_number'].startswith("INV-")
+
 
 def test_history_json_respects_limit():
     """GET /reminders/history?limit=1 should return at most 1 entry."""
@@ -102,7 +107,8 @@ def test_history_csv_returns_csv():
     assert len(lines) >= 2  # header + at least 1 data row
     header = lines[0]
     assert 'id' in header
-    assert 'invoice_id' in header
+    assert 'invoice_number' in header
+    assert 'debtor_name' in header
     assert 'sent_at' in header
     assert 'channel' in header
     assert 'status' in header

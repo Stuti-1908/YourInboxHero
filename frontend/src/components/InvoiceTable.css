@@ -112,6 +112,17 @@
   color: var(--color-status-neutral);
 }
 
+/* Reminder history log statuses */
+.badge.status-sent {
+  background-color: var(--color-status-success-bg);
+  color: var(--color-status-success);
+}
+
+.badge.status-failed {
+  background-color: var(--color-status-error-bg);
+  color: var(--color-status-error);
+}
+
 /* Action Button */
 .btn-action {
   background: transparent;

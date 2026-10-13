@@ -19,6 +19,8 @@ from src.models.user import User
 class ReminderLogResponse(BaseModel):
     id: str
     invoice_id: str
+    invoice_number: str
+    debtor_name: str
     sent_at: str
     channel: str
     status: str
@@ -42,17 +44,19 @@ def get_reminder_history(
     query = _build_history_query(start_date, end_date, db, current_user)
     if limit:
         query = query.limit(limit)
-    logs = query.all()
+    rows = query.all()
 
     return [
         {
             "id": log.id,
             "invoice_id": log.invoice_id,
+            "invoice_number": inv_number,
+            "debtor_name": debtor_name,
             "sent_at": log.sent_at.isoformat() if log.sent_at else "",
             "channel": log.channel.value,
             "status": log.status.value,
             "payload": log.payload
-        } for log in logs
+        } for log, inv_number, debtor_name in rows
     ]
 
 
@@ -65,13 +69,13 @@ def get_reminder_history_csv(
 ):
     """Export reminder history as CSV."""
     query = _build_history_query(start_date, end_date, db, current_user)
-    logs = query.all()
+    rows = query.all()
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['id', 'invoice_id', 'sent_at', 'channel', 'status'])
-    for log in logs:
-        writer.writerow([log.id, log.invoice_id, log.sent_at, log.channel.value, log.status.value])
+    writer.writerow(['id', 'invoice_number', 'debtor_name', 'sent_at', 'channel', 'status'])
+    for log, inv_number, debtor_name in rows:
+        writer.writerow([log.id, inv_number, debtor_name, log.sent_at, log.channel.value, log.status.value])
 
     response = Response(content=output.getvalue(), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=reminders_history.csv"
@@ -80,7 +84,7 @@ def get_reminder_history_csv(
 
 def _build_history_query(start_date, end_date, db, current_user):
     query = (
-        db.query(ReminderLog)
+        db.query(ReminderLog, Invoice.invoice_number, Debtor.name)
         .join(Invoice, ReminderLog.invoice_id == Invoice.id)
         .join(Debtor, Invoice.debtor_id == Debtor.id)
         .filter(Debtor.user_id == current_user.id)

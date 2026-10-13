@@ -44,6 +44,17 @@ export interface EmailTemplate {
   body: string;
 }
 
+export interface ReminderLogEntry {
+  id: string;
+  invoice_id: string;
+  invoice_number: string;
+  debtor_name: string;
+  sent_at: string;
+  channel: string;
+  status: string;
+  payload: Record<string, unknown> | null;
+}
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -102,6 +113,37 @@ export const markInvoicePaid = async (id: string): Promise<void> => {
   });
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) throw new Error('Failed to mark invoice as paid');
+};
+
+export const fetchReminderHistory = async (params?: { start_date?: string; end_date?: string }): Promise<ReminderLogEntry[]> => {
+  const query = new URLSearchParams();
+  if (params?.start_date) query.set('start_date', params.start_date);
+  if (params?.end_date) query.set('end_date', params.end_date);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/reminders/history${qs ? `?${qs}` : ''}`, { headers: getAuthHeaders() });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) throw new Error('Failed to fetch reminder history');
+  return await res.json();
+};
+
+export const downloadReminderHistoryCsv = async (params?: { start_date?: string; end_date?: string }): Promise<void> => {
+  const query = new URLSearchParams();
+  if (params?.start_date) query.set('start_date', params.start_date);
+  if (params?.end_date) query.set('end_date', params.end_date);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE}/reminders/history/csv${qs ? `?${qs}` : ''}`, { headers: getAuthHeaders() });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) throw new Error('Failed to download reminder history CSV');
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'reminders_history.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 };
 
 export const fetchDebtors = async (): Promise<Debtor[]> => {

@@ -20,6 +20,7 @@ import { VerifyEmail } from './components/VerifyEmail';
 import { logout, getCompanyName, refreshToken } from './api/invoice';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
+import { ReminderHistory } from './components/ReminderHistory';
 import './App.css';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
@@ -100,6 +101,7 @@ const DashboardLayout = () => {
             <>
               <button className={`nav-tab ${isMoneyTab('analytics') ? 'active' : ''}`} onClick={() => navigate('/dashboard/analytics')}>Analytics</button>
               <button className={`nav-tab ${isMoneyTab('invoices') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices')}>Invoices</button>
+              <button className={`nav-tab ${isMoneyTab('history') ? 'active' : ''}`} onClick={() => navigate('/dashboard/history')}>History</button>
               <button className={`nav-tab ${isMoneyTab('debtors') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors')}>Debtors</button>
               <button className={`nav-tab ${isMoneyTab('debtors/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors/new')}>Add Debtor</button>
               <button className={`nav-tab ${isMoneyTab('invoices/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices/new')}>Add Invoice</button>
@@ -126,6 +128,7 @@ const DashboardLayout = () => {
             <Route path="/dashboard" element={<Navigate to="/dashboard/analytics" replace />} />
             <Route path="/dashboard/analytics" element={<AnalyticsDashboard />} />
             <Route path="/dashboard/invoices" element={<InvoiceTable />} />
+            <Route path="/dashboard/history" element={<ReminderHistory />} />
             <Route path="/dashboard/debtors" element={<DebtorTable />} />
             <Route path="/dashboard/debtors/new" element={<CreateDebtor onSuccess={() => navigate('/dashboard/debtors')} />} />
             <Route path="/dashboard/invoices/new" element={<CreateInvoice onSuccess={() => navigate('/dashboard/invoices')} />} />
