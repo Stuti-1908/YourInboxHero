@@ -45,13 +45,22 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
         </div>
         <div className="form-group">
           <label>Phone (Optional)</label>
-          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+          <input
+            type="text"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              if (!e.target.value.trim()) setVoiceCallConsent(false);
+            }}
+            placeholder="+1 (555) 000-0000"
+          />
         </div>
         <div className="form-group">
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontWeight: 400 }}>
             <input
               type="checkbox"
               checked={voiceCallConsent}
+              disabled={!phone.trim()}
               onChange={(e) => setVoiceCallConsent(e.target.checked)}
               style={{ marginTop: '3px' }}
             />

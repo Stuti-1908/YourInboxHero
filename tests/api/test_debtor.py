@@ -40,6 +40,17 @@ def test_create_debtor_success():
     assert data["voice_call_consent"] is True
 
 
+def test_create_debtor_rejects_consent_without_phone():
+    payload = {
+        "name": "No Phone Consent Co",
+        "email": f"{uuid.uuid4().hex[:8]}@example.com",
+        "voice_call_consent": True,
+    }
+    resp = client.post("/debtor", json=payload)
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
+
+
 def test_create_debtor_duplicate_email_for_same_user_rejected():
     email = f"{uuid.uuid4().hex[:8]}@example.com"
     first = client.post("/debtor", json={"name": "First Co", "email": email})
@@ -127,6 +138,7 @@ def test_update_debtor_success():
     session = SessionLocal()
     try:
         d = _make_debtor(session, name="Before Update Co")
+        d.phone = "+15550001111"
         session.commit()
         debtor_id = d.id
     finally:
@@ -136,6 +148,52 @@ def test_update_debtor_success():
     assert resp.status_code == 200
     data = resp.json()
     assert data["name"] == "After Update Co"
+    assert data["voice_call_consent"] is True
+
+
+def test_update_debtor_rejects_consent_without_existing_phone():
+    session = SessionLocal()
+    try:
+        d = _make_debtor(session, name="No Phone Co")
+        session.commit()
+        debtor_id = d.id
+    finally:
+        session.close()
+
+    resp = client.put(f"/debtor/{debtor_id}", json={"voice_call_consent": True})
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
+
+
+def test_update_debtor_rejects_clearing_phone_while_consent_stays_on():
+    session = SessionLocal()
+    try:
+        d = _make_debtor(session, name="Phone Then Cleared Co")
+        d.phone = "+15550002222"
+        d.voice_call_consent = True
+        session.commit()
+        debtor_id = d.id
+    finally:
+        session.close()
+
+    resp = client.put(f"/debtor/{debtor_id}", json={"phone": ""})
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
+
+
+def test_update_debtor_allows_consent_with_phone_set_in_same_request():
+    session = SessionLocal()
+    try:
+        d = _make_debtor(session, name="Phone And Consent Together Co")
+        session.commit()
+        debtor_id = d.id
+    finally:
+        session.close()
+
+    resp = client.put(f"/debtor/{debtor_id}", json={"phone": "+15550003333", "voice_call_consent": True})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["phone"] == "+15550003333"
     assert data["voice_call_consent"] is True
 
 

@@ -38,6 +38,9 @@ def create_document_client(
     current_user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db)
 ):
+    if client_in.voice_call_consent and not client_in.phone:
+        raise HTTPException(status_code=422, detail="A phone number is required to record voice call consent")
+
     db_client = DocumentClient(
         user_id=current_user.id,
         name=client_in.name,
@@ -97,6 +100,12 @@ def update_document_client(
         client.phone = request.phone
     if request.voice_call_consent is not None:
         client.voice_call_consent = request.voice_call_consent
+
+    # Checked after applying all three fields above, not just the
+    # request's own voice_call_consent -- phone and consent can be
+    # patched independently (mirrors PUT /debtor/{id}).
+    if client.voice_call_consent and not client.phone:
+        raise HTTPException(status_code=422, detail="A phone number is required to record voice call consent")
 
     db.commit()
     db.refresh(client)

@@ -48,6 +48,9 @@ def create_debtor(
     if db.query(Debtor).filter(Debtor.email == request.email, Debtor.user_id == current_user.id).first():
         raise HTTPException(status_code=400, detail="Debtor with this email already exists")
 
+    if request.voice_call_consent and not request.phone:
+        raise HTTPException(status_code=422, detail="A phone number is required to record voice call consent")
+
     new_debtor = Debtor(
         user_id=current_user.id,
         name=request.name,
@@ -141,6 +144,13 @@ def update_debtor(
         debtor.phone = request.phone
     if request.voice_call_consent is not None:
         debtor.voice_call_consent = request.voice_call_consent
+
+    # Checked after applying all three fields above (not just the request's
+    # own voice_call_consent) since phone and consent can be patched
+    # independently -- e.g. clearing phone on a debtor that already has
+    # consent=True must be rejected too, not just a request that sets both.
+    if debtor.voice_call_consent and not debtor.phone:
+        raise HTTPException(status_code=422, detail="A phone number is required to record voice call consent")
 
     db.commit()
     db.refresh(debtor)

@@ -66,7 +66,10 @@ export const CreateDocumentClient = ({ onSuccess }: { onSuccess: () => void }) =
           <input
             type="text"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              if (!e.target.value.trim()) setVoiceCallConsent(false);
+            }}
             placeholder="+1234567890"
             style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--color-border)' }}
           />
@@ -77,6 +80,7 @@ export const CreateDocumentClient = ({ onSuccess }: { onSuccess: () => void }) =
             <input
               type="checkbox"
               checked={voiceCallConsent}
+              disabled={!phone.trim()}
               onChange={(e) => setVoiceCallConsent(e.target.checked)}
               style={{ marginTop: '3px' }}
             />

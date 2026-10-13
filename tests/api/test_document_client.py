@@ -40,7 +40,8 @@ def test_update_document_client_voice_consent():
     try:
         c = DocumentClient(
             user_id="test-id", id=str(uuid.uuid4()), name="Update Consent Co",
-            email=f"{uuid.uuid4().hex[:8]}@example.com", voice_call_consent=False,
+            email=f"{uuid.uuid4().hex[:8]}@example.com", phone="+15550009999",
+            voice_call_consent=False,
         )
         session.add(c)
         session.commit()
@@ -51,6 +52,53 @@ def test_update_document_client_voice_consent():
     resp = client.put(f"/document-clients/{client_id}", json={"voice_call_consent": True})
     assert resp.status_code == 200
     assert resp.json()["voice_call_consent"] is True
+
+
+def test_update_document_client_rejects_consent_without_existing_phone():
+    session = SessionLocal()
+    try:
+        c = DocumentClient(
+            user_id="test-id", id=str(uuid.uuid4()), name="No Phone Doc Co",
+            email=f"{uuid.uuid4().hex[:8]}@example.com",
+        )
+        session.add(c)
+        session.commit()
+        client_id = c.id
+    finally:
+        session.close()
+
+    resp = client.put(f"/document-clients/{client_id}", json={"voice_call_consent": True})
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
+
+
+def test_update_document_client_rejects_clearing_phone_while_consent_stays_on():
+    session = SessionLocal()
+    try:
+        c = DocumentClient(
+            user_id="test-id", id=str(uuid.uuid4()), name="Phone Then Cleared Doc Co",
+            email=f"{uuid.uuid4().hex[:8]}@example.com", phone="+15550008888",
+            voice_call_consent=True,
+        )
+        session.add(c)
+        session.commit()
+        client_id = c.id
+    finally:
+        session.close()
+
+    resp = client.put(f"/document-clients/{client_id}", json={"phone": ""})
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
+
+
+def test_create_document_client_rejects_consent_without_phone():
+    payload = {
+        "name": "No Phone Consent Co", "email": f"{uuid.uuid4().hex[:8]}@example.com",
+        "voice_call_consent": True,
+    }
+    resp = client.post("/document-clients", json=payload)
+    assert resp.status_code == 422
+    assert "phone" in resp.json()["detail"].lower()
 
 
 def test_update_document_client_not_found():
