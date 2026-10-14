@@ -35,6 +35,22 @@ PLANS = {
 }
 
 
+def _stripe_get(obj, key, default=None):
+    """dict-style .get() for Stripe SDK v16+ typed resource objects.
+
+    These objects support __getitem__ (obj["key"]) but not .get() --
+    calling .get() on one raises AttributeError ('get' is a dict method,
+    but a Session is not a dict), which was silently 500-ing every
+    checkout.session.completed/subscription webhook since the SDK was
+    last upgraded. Use this everywhere a Stripe event/object needs an
+    optional field instead of dict .get().
+    """
+    try:
+        return obj[key]
+    except (KeyError, AttributeError, TypeError):
+        return default
+
+
 def _get_stripe_client():
     if not settings.stripe_secret_key:
         raise HTTPException(status_code=503, detail="Payments are not configured")
@@ -134,8 +150,9 @@ async def stripe_webhook(request: Request):
 
         if event_type == "checkout.session.completed":
             session = event["data"]["object"]
-            plan = session.get("metadata", {}).get("plan")
-            email = session.get("metadata", {}).get("email") or session.get("customer_email")
+            metadata = _stripe_get(session, "metadata", {}) or {}
+            plan = _stripe_get(metadata, "plan")
+            email = _stripe_get(metadata, "email") or _stripe_get(session, "customer_email")
 
             if not plan or plan not in PLANS or not email:
                 logger.warning("stripe_webhook_missing_plan_or_email", event_id=event["id"])
@@ -155,8 +172,8 @@ async def stripe_webhook(request: Request):
                     db.add(pending)
                 pending.plan = plan
                 pending.chases_limit = plan_config["chases"]
-                pending.stripe_customer_id = session.get("customer")
-                pending.stripe_subscription_id = session.get("subscription")
+                pending.stripe_customer_id = _stripe_get(session, "customer")
+                pending.stripe_subscription_id = _stripe_get(session, "subscription")
                 db.commit()
                 logger.info("subscription_pending_registration", email=email, plan=plan)
                 return {"msg": f"No user found for {email} yet — plan will activate on registration"}
@@ -164,8 +181,8 @@ async def stripe_webhook(request: Request):
             user.subscription_plan = plan
             user.subscription_status = "active"
             user.subscription_started_at = datetime.now(timezone.utc)
-            user.stripe_customer_id = session.get("customer")
-            user.stripe_subscription_id = session.get("subscription")
+            user.stripe_customer_id = _stripe_get(session, "customer")
+            user.stripe_subscription_id = _stripe_get(session, "subscription")
             user.chases_limit = plan_config["chases"]
             user.chases_used = 0
             db.commit()
@@ -180,7 +197,8 @@ async def stripe_webhook(request: Request):
             subscription = event["data"]["object"]
             user = db.query(User).filter(User.stripe_subscription_id == subscription["id"]).first()
             if user:
-                items = subscription.get("items", {}).get("data", [])
+                items_obj = _stripe_get(subscription, "items", {}) or {}
+                items = _stripe_get(items_obj, "data", [])
                 new_price_id = items[0]["price"]["id"] if items else None
                 matched_plan = None
                 for plan_key, plan_cfg in PLANS.items():
@@ -209,7 +227,7 @@ async def stripe_webhook(request: Request):
 
         elif event_type == "invoice.payment_failed":
             invoice = event["data"]["object"]
-            user = db.query(User).filter(User.stripe_customer_id == invoice.get("customer")).first()
+            user = db.query(User).filter(User.stripe_customer_id == _stripe_get(invoice, "customer")).first()
             if user:
                 user.subscription_status = "past_due"
                 db.commit()
@@ -227,8 +245,8 @@ async def stripe_webhook(request: Request):
             # never risk wiping out chases the customer sent in the gap
             # between the two events for their very first payment.
             invoice = event["data"]["object"]
-            billing_reason = invoice.get("billing_reason")
-            user = db.query(User).filter(User.stripe_customer_id == invoice.get("customer")).first()
+            billing_reason = _stripe_get(invoice, "billing_reason")
+            user = db.query(User).filter(User.stripe_customer_id == _stripe_get(invoice, "customer")).first()
             if user:
                 if user.subscription_status != "active":
                     user.subscription_status = "active"

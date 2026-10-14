@@ -18,7 +18,7 @@ alembic
 azure-monitor-opentelemetry
 reportlab
 APScheduler
-stripe
+stripe==16.0.0
 slowapi
 structlog
 tenacity

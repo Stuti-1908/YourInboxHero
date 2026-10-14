@@ -16,6 +16,44 @@ from src.auth import get_password_hash
 client = TestClient(app)
 
 
+class StripeObjectLike(dict):
+    """Mimics the real Stripe SDK v16+ typed resource object's dict-access
+    behavior for tests: supports obj["key"] (including nested access, since
+    __getitem__ wraps any nested dict recursively) but raises AttributeError
+    on .get(), exactly like the real stripe.Session/.Subscription/.Invoice.
+
+    A plain dict here was the actual root cause of the 500 bug this guards
+    against: .get() silently worked in every test (dicts support it) while
+    the real SDK object raised AttributeError in production, so the bug
+    shipped with full test coverage passing. Any new fake webhook "object"
+    payload must use this instead of a bare dict.
+    """
+    def __getitem__(self, key):
+        value = dict.__getitem__(self, key)
+        if isinstance(value, dict) and not isinstance(value, StripeObjectLike):
+            return StripeObjectLike(value)
+        return value
+
+    def get(self, *args, **kwargs):
+        raise AttributeError("'get' is a dict method, but a Session is not a dict. Use .to_dict() to convert it.")
+
+
+def test_stripe_object_like_fixture_matches_real_sdk_v16_behavior():
+    """Regression guard for the test fixture itself: if StripeObjectLike
+    ever stops raising on .get(), every test above silently loses its
+    ability to catch this exact bug class again (plain dict .get() working
+    in tests while the real stripe.Session/.Subscription/.Invoice raises
+    AttributeError in production is what let the original bug ship)."""
+    obj = StripeObjectLike({"customer": "cus_x", "metadata": {"plan": "growth"}})
+    assert obj["customer"] == "cus_x"
+    assert obj["metadata"]["plan"] == "growth"
+    try:
+        obj.get("customer")
+        assert False, "StripeObjectLike.get() should have raised AttributeError"
+    except AttributeError:
+        pass
+
+
 def _make_user(username=None):
     username = username or f"{uuid.uuid4().hex[:8]}@example.com"
     session = SessionLocal()
@@ -89,12 +127,12 @@ def test_webhook_activates_subscription_on_verified_event(monkeypatch):
         "id": "evt_test123",
         "type": "checkout.session.completed",
         "data": {
-            "object": {
+            "object": StripeObjectLike({
                 "customer": "cus_fake123",
                 "subscription": "sub_fake123",
                 "customer_email": username,
                 "metadata": {"plan": "growth", "email": username},
-            }
+            })
         },
     }
 
@@ -139,7 +177,7 @@ def test_webhook_marks_subscription_past_due_on_payment_failure(monkeypatch):
     fake_event = {
         "id": "evt_fail1",
         "type": "invoice.payment_failed",
-        "data": {"object": {"customer": "cus_fake456"}},
+        "data": {"object": StripeObjectLike({"customer": "cus_fake456"})},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -174,7 +212,7 @@ def test_webhook_reactivates_subscription_on_payment_success_after_past_due(monk
     fake_event = {
         "id": "evt_success1",
         "type": "invoice.payment_succeeded",
-        "data": {"object": {"customer": "cus_fake789"}},
+        "data": {"object": StripeObjectLike({"customer": "cus_fake789"})},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -213,7 +251,7 @@ def test_webhook_resets_usage_on_genuine_renewal(monkeypatch):
     fake_event = {
         "id": "evt_renewal1",
         "type": "invoice.payment_succeeded",
-        "data": {"object": {"customer": "cus_renewal1", "billing_reason": "subscription_cycle"}},
+        "data": {"object": StripeObjectLike({"customer": "cus_renewal1", "billing_reason": "subscription_cycle"})},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -253,7 +291,7 @@ def test_webhook_does_not_reset_usage_on_first_payment():
     fake_event = {
         "id": "evt_firstpay1",
         "type": "invoice.payment_succeeded",
-        "data": {"object": {"customer": "cus_firstpay1", "billing_reason": "subscription_create"}},
+        "data": {"object": StripeObjectLike({"customer": "cus_firstpay1", "billing_reason": "subscription_create"})},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -332,7 +370,7 @@ def test_webhook_deduplicates_replayed_event(monkeypatch):
     fake_event = {
         "id": "evt_dedup_test1",
         "type": "invoice.payment_succeeded",
-        "data": {"object": {"customer": "cus_dedup1", "billing_reason": "subscription_cycle"}},
+        "data": {"object": StripeObjectLike({"customer": "cus_dedup1", "billing_reason": "subscription_cycle"})},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -386,10 +424,10 @@ def test_webhook_subscription_updated_changes_plan(monkeypatch):
     fake_event = {
         "id": "evt_subupdate1",
         "type": "customer.subscription.updated",
-        "data": {"object": {
+        "data": {"object": StripeObjectLike({
             "id": "sub_upgrade1",
             "items": {"data": [{"price": {"id": "price_scale_fake"}}]},
-        }},
+        })},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
@@ -425,10 +463,10 @@ def test_webhook_subscription_updated_ignores_unrecognized_price(monkeypatch):
     fake_event = {
         "id": "evt_subupdate_unknown1",
         "type": "customer.subscription.updated",
-        "data": {"object": {
+        "data": {"object": StripeObjectLike({
             "id": "sub_unknown1",
             "items": {"data": [{"price": {"id": "price_totally_unrecognized"}}]},
-        }},
+        })},
     }
 
     with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
