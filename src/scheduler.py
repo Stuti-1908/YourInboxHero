@@ -22,7 +22,7 @@ from src.db import SessionLocal
 from src.models.user import User  # noqa: F401
 from src.models.debtor import Debtor  # noqa: F401
 from src.models.invoice import Invoice, InvoiceStatus  # noqa: F401
-from src.models.reminder import ReminderLog  # noqa: F401
+from src.models.reminder import ReminderLog, Channel, ReminderStatus
 from src.models.email_template import EmailTemplate  # noqa: F401
 from src.models.document_request import DocumentRequest  # noqa: F401
 from src.models.document_client import DocumentClient  # noqa: F401
@@ -60,6 +60,22 @@ def _as_aware_utc(dt):
 # Escalation timing (days) - from settings
 EMAIL_TO_SMS_DAYS = settings.email_to_sms_days
 SMS_TO_VOICE_DAYS = settings.sms_to_voice_days
+
+
+def _log_reminder(db: Session, channel: Channel, success: bool, payload: dict, invoice_id=None, document_request_id=None):
+    """Record an SMS/voice send attempt for the History page's audit trail.
+    Exactly one of invoice_id/document_request_id must be set (see
+    ReminderLog's check constraint). Pre-due invoice emails already log via
+    reminder_worker.handle_invoice_reminder -- this covers the sends that
+    previously had none: invoice SMS/voice, and all document-request sends."""
+    db.add(ReminderLog(
+        invoice_id=invoice_id,
+        document_request_id=document_request_id,
+        sent_at=datetime.now(timezone.utc),
+        channel=channel,
+        payload=payload,
+        status=ReminderStatus.sent if success else ReminderStatus.failed,
+    ))
 
 
 def run_escalation_sweep(db: Session):
@@ -187,6 +203,11 @@ def run_sms_reminders(db: Session):
                             invoice_id=str(inv.id),
                             invoice_number=inv.invoice_number,
                             debtor_phone=debtor.phone)
+            _log_reminder(
+                db, Channel.sms, success,
+                payload={"invoice_number": inv.invoice_number, "debtor_phone": debtor.phone},
+                invoice_id=inv.id,
+            )
             # Commit per-invoice: a later invoice in this loop throwing must
             # not roll back an earlier invoice's already-successful send,
             # which would otherwise cause it to be sent again next run (and
@@ -281,6 +302,11 @@ def run_voice_calls(db: Session):
                             invoice_id=str(inv.id),
                             invoice_number=inv.invoice_number,
                             debtor_phone=debtor.phone)
+            _log_reminder(
+                db, Channel.voice, success,
+                payload={"invoice_number": inv.invoice_number, "debtor_phone": debtor.phone},
+                invoice_id=inv.id,
+            )
             # Commit per-invoice — see the matching comment in run_sms_reminders.
             db.commit()
         except Exception as e:
@@ -375,6 +401,11 @@ def run_document_sms_reminders(db: Session):
                 req.last_reminder_sent = datetime.now(timezone.utc)
                 record_chase_used(user, db, channel='sms', invoice_id=str(req.id))
                 logger.info("document_sms_sent", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
+            _log_reminder(
+                db, Channel.sms, success,
+                payload={"title": req.title, "client_phone": client.phone},
+                document_request_id=req.id,
+            )
             db.commit()
         except Exception as e:
             db.rollback()
@@ -447,6 +478,11 @@ def run_document_voice_calls(db: Session):
                 req.last_reminder_sent = datetime.now(timezone.utc)
                 record_chase_used(user, db, channel='voice', invoice_id=str(req.id))
                 logger.info("document_voice_call_triggered", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
+            _log_reminder(
+                db, Channel.voice, success,
+                payload={"title": req.title, "client_phone": client.phone},
+                document_request_id=req.id,
+            )
             db.commit()
         except Exception as e:
             db.rollback()

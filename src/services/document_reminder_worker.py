@@ -1,19 +1,17 @@
 """Document reminder worker — processes individual document-request
 reminders. Mirrors src/services/reminder_worker.py for invoices.
 
-Unlike invoices, document requests don't get a ReminderLog audit-trail
-entry -- that table's invoice_id column is NOT NULL and FK'd
-specifically to invoice, so logging document sends there isn't possible
-without a schema change. DocumentRequest already carries its own
-last_reminder_sent/sms_sent_count/voice_call_count columns, which is
-the equivalent visibility for this module (same fields the UI's
-Document Collection table already displays).
+ReminderLog now supports document requests (document_request_id column,
+added alongside relaxing invoice_id to nullable) -- previously this
+module didn't log anything there, leaving no audit trail for document
+email/SMS/voice sends despite the History page implying one exists.
 """
 import logging
 from datetime import datetime, timezone
 
 from src.db import get_session
 from src.models.document_request import DocumentRequest
+from src.models.reminder import ReminderLog, Channel, ReminderStatus
 from src.services.document_email import send_document_request_email
 from src.services.usage_limits import can_send_chase, record_chase_used
 
@@ -52,15 +50,29 @@ def handle_document_reminder(doc_request_id: str) -> None:
 
         try:
             send_document_request_email(doc)
+            status = ReminderStatus.sent
         except Exception as exc:
             logging.error(f'Failed to send reminder for document request {doc_request_id}: {exc}')
-            # Unlike invoices (which always log+commit a failed attempt to
-            # ReminderLog), a failed document-email send here simply isn't
-            # recorded anywhere -- re-raise so the caller's per-request
-            # try/except in process_due_document_reminders counts it as
-            # failed rather than silently treating it as sent.
+            sess.add(ReminderLog(
+                document_request_id=doc_request_id,
+                sent_at=datetime.now(timezone.utc),
+                channel=Channel.email,
+                payload={'title': doc.title, 'client_email': doc.client.email},
+                status=ReminderStatus.failed,
+            ))
+            sess.commit()
+            # Re-raise so the caller's per-request try/except in
+            # process_due_document_reminders counts it as failed rather
+            # than silently treating it as sent.
             raise
 
+        sess.add(ReminderLog(
+            document_request_id=doc_request_id,
+            sent_at=datetime.now(timezone.utc),
+            channel=Channel.email,
+            payload={'title': doc.title, 'client_email': doc.client.email},
+            status=status,
+        ))
         doc.last_reminder_sent = datetime.now(timezone.utc)
         record_chase_used(user, sess, channel='email', invoice_id=doc_request_id)
         sess.commit()

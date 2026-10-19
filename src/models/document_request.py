@@ -41,3 +41,5 @@ class DocumentRequest(Base):
     voice_call_count = Column(Integer, nullable=False, default=0)
 
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    reminders = relationship('ReminderLog', back_populates='document_request', cascade="all, delete-orphan")
