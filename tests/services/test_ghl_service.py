@@ -153,9 +153,10 @@ def test_send_sms_fails_when_contact_lookup_fails(monkeypatch):
 
 
 def test_trigger_voice_call_tags_contact(monkeypatch):
-    """Confirms the current implementation: this only tags the contact for a
-    GHL Workflow to pick up (human warm-transfer), it does not place an
-    automated call itself and does not pass the message text anywhere."""
+    """Confirms the current implementation: this tags the contact for a GHL
+    Voice AI Workflow to pick up and does not pass the message text
+    anywhere (GHL's Voice AI action reads contact custom fields + its own
+    fixed agent prompt, not a per-call string)."""
     _mock_settings(monkeypatch)
     contact_resp = MagicMock()
     contact_resp.json.return_value = {"contacts": [{"id": "contact-1"}]}
@@ -164,7 +165,11 @@ def test_trigger_voice_call_tags_contact(monkeypatch):
     tag_resp = MagicMock()
     tag_resp.raise_for_status = lambda: None
 
+    put_resp = MagicMock()
+    put_resp.raise_for_status = lambda: None
+
     with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
+        patch("src.services.ghl_service.requests.put", return_value=put_resp), \
         patch("src.services.ghl_service.requests.post", return_value=tag_resp) as mock_post:
         result = ghl_service.trigger_voice_call(
             phone="+15551234567",
@@ -176,9 +181,110 @@ def test_trigger_voice_call_tags_contact(monkeypatch):
     assert result is True
     mock_post.assert_called_once()
     call_kwargs = mock_post.call_args.kwargs
+    # No reason passed -> falls back to the original shared tag name.
     assert call_kwargs["json"]["tags"] == ["voice_escalation"]
     # The message text is accepted by the function signature but never sent
     # to GHL anywhere in the request — flagging via assertion so this test
     # breaks (intentionally) if/when that gap gets fixed, as a reminder to
     # update this test alongside it.
     assert "message" not in call_kwargs["json"]
+
+
+def test_trigger_voice_call_tags_contact_with_reason_specific_tag(monkeypatch):
+    """Passing reason="invoice"/"document" must produce a distinct tag per
+    reason, so GHL can route each to its own Workflow + Voice AI agent
+    without a conditional filter step."""
+    _mock_settings(monkeypatch)
+    contact_resp = MagicMock()
+    contact_resp.json.return_value = {"contacts": [{"id": "contact-1"}]}
+    contact_resp.raise_for_status = lambda: None
+
+    tag_resp = MagicMock()
+    tag_resp.raise_for_status = lambda: None
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status = lambda: None
+
+    with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
+        patch("src.services.ghl_service.requests.put", return_value=put_resp), \
+        patch("src.services.ghl_service.requests.post", return_value=tag_resp) as mock_post:
+        result = ghl_service.trigger_voice_call(
+            phone="+15551234567",
+            message="unused",
+            contact_name="Jane Doe",
+            contact_email="jane@example.com",
+            reason="document",
+        )
+
+    assert result is True
+    call_kwargs = mock_post.call_args.kwargs
+    assert call_kwargs["json"]["tags"] == ["voice_escalation_document"]
+
+
+def test_trigger_voice_call_writes_personalization_fields_before_tagging(monkeypatch):
+    """The contact's GHL custom fields (read by the Voice AI agent's prompt
+    via {{contact.voice_call_*}}) must be written before the tag that
+    triggers the call, so the agent never reads a stale value from a prior
+    escalation."""
+    _mock_settings(monkeypatch)
+    contact_resp = MagicMock()
+    contact_resp.json.return_value = {"contacts": [{"id": "contact-1"}]}
+    contact_resp.raise_for_status = lambda: None
+
+    tag_resp = MagicMock()
+    tag_resp.raise_for_status = lambda: None
+
+    put_resp = MagicMock()
+    put_resp.raise_for_status = lambda: None
+
+    with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
+        patch("src.services.ghl_service.requests.put", return_value=put_resp) as mock_put, \
+        patch("src.services.ghl_service.requests.post", return_value=tag_resp):
+        result = ghl_service.trigger_voice_call(
+            phone="+15551234567",
+            message="unused",
+            contact_name="Jane Doe",
+            contact_email="jane@example.com",
+            company_name="Acme Inc",
+            reason="invoice",
+            item_description="INV-1001",
+            amount="500.00",
+            due_date="2026-10-01",
+        )
+
+    assert result is True
+    mock_put.assert_called_once()
+    body = mock_put.call_args.kwargs["json"]
+    fields_by_key = {f["key"]: f["field_value"] for f in body["customFields"]}
+    assert fields_by_key["voice_call_contact_name"] == "Jane Doe"
+    assert fields_by_key["voice_call_company_name"] == "Acme Inc"
+    assert fields_by_key["voice_call_reason"] == "invoice"
+    assert fields_by_key["voice_call_item_description"] == "INV-1001"
+    assert fields_by_key["voice_call_amount"] == "500.00"
+    assert fields_by_key["voice_call_due_date"] == "2026-10-01"
+
+
+def test_trigger_voice_call_still_tags_even_if_custom_field_write_fails(monkeypatch):
+    """A generic (unpersonalized) call is better than no call at all -- a
+    failed custom-field write must not block the tag-add that actually
+    triggers the call."""
+    _mock_settings(monkeypatch)
+    contact_resp = MagicMock()
+    contact_resp.json.return_value = {"contacts": [{"id": "contact-1"}]}
+    contact_resp.raise_for_status = lambda: None
+
+    tag_resp = MagicMock()
+    tag_resp.raise_for_status = lambda: None
+
+    with patch("src.services.ghl_service.requests.get", return_value=contact_resp), \
+        patch("src.services.ghl_service.requests.put", side_effect=Exception("network error")), \
+        patch("src.services.ghl_service.requests.post", return_value=tag_resp) as mock_post:
+        result = ghl_service.trigger_voice_call(
+            phone="+15551234567",
+            message="unused",
+            contact_name="Jane Doe",
+            contact_email="jane@example.com",
+        )
+
+    assert result is True
+    mock_post.assert_called_once()

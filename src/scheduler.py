@@ -265,7 +265,12 @@ def run_voice_calls(db: Session):
                 phone=debtor.phone,
                 message=message,
                 contact_name=debtor.name,
-                contact_email=debtor.email
+                contact_email=debtor.email,
+                company_name=company_name,
+                reason="invoice",
+                item_description=inv.invoice_number,
+                amount=f"{inv.amount:.2f}",
+                due_date=inv.due_date.isoformat(),
             )
 
             if success:
@@ -425,7 +430,17 @@ def run_document_voice_calls(db: Session):
         )
 
         try:
-            success = trigger_voice_call(phone=client.phone, message=message, contact_name=client.name, contact_email=client.email)
+            success = trigger_voice_call(
+                phone=client.phone,
+                message=message,
+                contact_name=client.name,
+                contact_email=client.email,
+                company_name=company_name,
+                reason="document",
+                item_description=req.title,
+                amount="",
+                due_date=req.due_date.isoformat(),
+            )
 
             if success:
                 req.voice_call_count = (req.voice_call_count or 0) + 1
