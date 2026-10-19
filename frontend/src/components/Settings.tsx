@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getMe, updateSettings } from '../api/invoice';
+import { getMe, updateSettings, createBillingPortalSession } from '../api/invoice';
 import './Settings.css';
 import './Forms.css';
 
@@ -7,6 +7,9 @@ export const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [subscriptionPlan, setSubscriptionPlan] = useState('');
+  const [subscriptionStatus, setSubscriptionStatus] = useState('');
 
   const [settings, setSettings] = useState({
     company_name: '',
@@ -60,6 +63,8 @@ export const Settings = () => {
       setVoiceCallStartHour(data.voice_call_start_hour ?? 9);
       setVoiceCallEndHour(data.voice_call_end_hour ?? 17);
       setVoiceCallTimezone(data.voice_call_timezone || 'America/New_York');
+      setSubscriptionPlan(data.subscription_plan || '');
+      setSubscriptionStatus(data.subscription_status || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -116,6 +121,18 @@ export const Settings = () => {
     }
   };
 
+  const handleManageBilling = async () => {
+    setBillingLoading(true);
+    setMessage('');
+    try {
+      const { portal_url } = await createBillingPortalSession();
+      window.location.href = portal_url;
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to open billing portal');
+      setBillingLoading(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading settings...</div>;
 
   return (
@@ -133,6 +150,33 @@ export const Settings = () => {
       {message && <div style={{ marginBottom: '20px', padding: '10px', background: 'var(--color-bg-alt)', borderRadius: '8px', color: 'var(--color-primary)' }}>{message}</div>}
 
       <div className="settings-card">
+        <h3>Billing & Subscription</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '0.95rem' }}>
+              {subscriptionPlan ? (
+                <>
+                  Current plan: <strong style={{ textTransform: 'capitalize' }}>{subscriptionPlan}</strong>
+                  {' · '}
+                  <span style={{ textTransform: 'capitalize', color: subscriptionStatus === 'active' ? 'var(--color-status-success, green)' : 'var(--color-text-light)' }}>
+                    {subscriptionStatus}
+                  </span>
+                </>
+              ) : (
+                'No active subscription'
+              )}
+            </p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginTop: '4px' }}>
+              Update your payment method, view invoices, or cancel your subscription.
+            </p>
+          </div>
+          <button type="button" className="btn-secondary" onClick={handleManageBilling} disabled={billingLoading}>
+            {billingLoading ? 'Opening...' : 'Manage Billing'}
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-card" style={{ marginTop: '20px' }}>
         <h3>Branding</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="form-group">

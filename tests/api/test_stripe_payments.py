@@ -6,6 +6,7 @@ via a signature-verified webhook event, never via a direct/forged request.
 import uuid
 from unittest.mock import patch, MagicMock
 
+import stripe
 from fastapi.testclient import TestClient
 
 from src.app import app
@@ -96,6 +97,113 @@ def test_create_checkout_session_success(monkeypatch):
     assert resp.json()["checkout_url"] == "https://checkout.stripe.com/fake-session"
     mock_create.assert_called_once()
     assert mock_create.call_args.kwargs["mode"] == "subscription"
+
+
+def test_billing_portal_requires_existing_customer():
+    """A user who has never completed checkout (no stripe_customer_id) has
+    nothing to manage -- must get a clear 400, not a Stripe API error."""
+    resp = client.post("/api/payments/portal")
+    assert resp.status_code == 400
+    assert "billing account" in resp.json()["detail"].lower()
+
+
+def test_billing_portal_creates_session_for_existing_customer(monkeypatch):
+    """The only path to cancel/update payment method/view invoices -- must
+    create a real Stripe Billing Portal session scoped to this user's own
+    stripe_customer_id and return its hosted URL."""
+    from src.api import stripe_payments
+    from src.auth import get_current_user
+    monkeypatch.setattr(stripe_payments.settings, "stripe_secret_key", "sk_test_fake")
+
+    session = SessionLocal()
+    try:
+        db_user = User(
+            username=f"portaltest_{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password=get_password_hash("pw"), company_name="Portal Test Co",
+            subscription_status="active", subscription_plan="growth",
+            stripe_customer_id="cus_portal_fake123",
+        )
+        session.add(db_user)
+        session.commit()
+        user_id = db_user.id
+        username = db_user.username
+    finally:
+        session.close()
+
+    mock_portal_session = MagicMock()
+    mock_portal_session.url = "https://billing.stripe.com/p/session/fake123"
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, subscription_status="active",
+            subscription_plan="growth", stripe_customer_id="cus_portal_fake123",
+        )
+        with patch("src.api.stripe_payments.stripe.billing_portal.Session.create", return_value=mock_portal_session) as mock_create:
+            resp = client.post("/api/payments/portal")
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    assert resp.status_code == 200
+    assert resp.json()["portal_url"] == "https://billing.stripe.com/p/session/fake123"
+    mock_create.assert_called_once()
+    assert mock_create.call_args.kwargs["customer"] == "cus_portal_fake123"
+
+
+def test_billing_portal_requires_authentication():
+    from src.auth import get_current_user
+    old_override = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides.pop(get_current_user, None)
+    try:
+        resp = client.post("/api/payments/portal")
+        assert resp.status_code == 401
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+
+
+def test_billing_portal_handles_stripe_error_gracefully(monkeypatch):
+    """A Stripe-side failure (bad API key, customer deleted on Stripe's side,
+    etc.) must surface as a clean 502, never an unhandled 500."""
+    from src.api import stripe_payments
+    from src.auth import get_current_user
+    monkeypatch.setattr(stripe_payments.settings, "stripe_secret_key", "sk_test_fake")
+
+    session = SessionLocal()
+    try:
+        db_user = User(
+            username=f"portalerr_{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password=get_password_hash("pw"), company_name="Portal Err Co",
+            subscription_status="active", stripe_customer_id="cus_err_fake",
+        )
+        session.add(db_user)
+        session.commit()
+        user_id = db_user.id
+        username = db_user.username
+    finally:
+        session.close()
+
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, subscription_status="active",
+            stripe_customer_id="cus_err_fake",
+        )
+        with patch(
+            "src.api.stripe_payments.stripe.billing_portal.Session.create",
+            side_effect=stripe.error.StripeError("boom"),
+        ):
+            resp = client.post("/api/payments/portal")
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    assert resp.status_code == 502
 
 
 def test_webhook_rejects_missing_secret_config(monkeypatch):

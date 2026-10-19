@@ -643,3 +643,16 @@ export const commitInvoiceImport = async (rows: ImportRow[]): Promise<ImportComm
   return await res.json();
 };
 
+export const createBillingPortalSession = async (): Promise<{ portal_url: string }> => {
+  const res = await fetch(`${API_BASE}/api/payments/portal`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to open billing portal');
+  }
+  return await res.json();
+};
+

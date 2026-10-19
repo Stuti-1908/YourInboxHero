@@ -16,11 +16,13 @@ import stripe
 from sqlalchemy.exc import IntegrityError
 
 from src.config.settings import get_settings
-from src.db import SessionLocal
+from src.db import SessionLocal, get_db
 from src.models.user import User
 from src.models.pending_subscription import PendingSubscription
 from src.models.processed_stripe_event import ProcessedStripeEvent
 from src.rate_limit import limiter
+from src.auth import get_current_user
+from fastapi import Depends
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -262,6 +264,40 @@ async def stripe_webhook(request: Request):
         return {"msg": f"Event received: {event_type}"}
     finally:
         db.close()
+
+
+@router.post("/portal")
+def create_billing_portal_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a Stripe Billing Portal session so the customer can cancel,
+    update their payment method, or view invoice history -- all inside
+    Stripe's own hosted UI, no custom billing-management UI needed here.
+
+    This is the ONLY place a subscription can be cancelled; there is no
+    "/cancel" endpoint of our own, so a cancellation always goes through
+    Stripe directly and reaches us back via the customer.subscription.deleted
+    webhook, the same trusted path every other subscription change uses.
+    """
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user or not user.stripe_customer_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No billing account found for this user — you may not have an active subscription yet.",
+        )
+
+    client = _get_stripe_client()
+    try:
+        portal_session = client.billing_portal.Session.create(
+            customer=user.stripe_customer_id,
+            return_url=f"{settings.frontend_url}/dashboard/settings",
+        )
+    except stripe.error.StripeError as e:
+        logger.error("stripe_billing_portal_failed", user_id=user.id, error=str(e))
+        raise HTTPException(status_code=502, detail="Could not open billing portal")
+
+    return {"portal_url": portal_session.url}
 
 
 @router.get("/plans")
