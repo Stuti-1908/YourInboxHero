@@ -78,8 +78,9 @@ export const ReminderHistory = () => {
         <thead>
           <tr>
             <th>Sent At</th>
-            <th>Invoice</th>
-            <th>Debtor</th>
+            <th>Type</th>
+            <th>Item</th>
+            <th>Contact</th>
             <th>Channel</th>
             <th>Status</th>
           </tr>
@@ -87,13 +88,13 @@ export const ReminderHistory = () => {
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+              <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                 Loading...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
+              <td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '40px' }}>
                 No reminders have been sent yet.
               </td>
             </tr>
@@ -101,8 +102,9 @@ export const ReminderHistory = () => {
             logs.map(log => (
               <tr key={log.id}>
                 <td>{log.sent_at ? new Date(log.sent_at).toLocaleString() : '—'}</td>
-                <td style={{ fontWeight: 500 }}>{log.invoice_number}</td>
-                <td>{log.debtor_name}</td>
+                <td>{log.invoice_id ? 'Invoice' : 'Document'}</td>
+                <td style={{ fontWeight: 500 }}>{log.item_label}</td>
+                <td>{log.contact_name}</td>
                 <td>{CHANNEL_LABELS[log.channel] || log.channel}</td>
                 <td>
                   <span className={`badge status-${log.status}`}>

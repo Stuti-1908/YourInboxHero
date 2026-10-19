@@ -46,9 +46,10 @@ export interface EmailTemplate {
 
 export interface ReminderLogEntry {
   id: string;
-  invoice_id: string;
-  invoice_number: string;
-  debtor_name: string;
+  invoice_id: string | null;
+  document_request_id: string | null;
+  item_label: string;
+  contact_name: string;
   sent_at: string;
   channel: string;
   status: string;
