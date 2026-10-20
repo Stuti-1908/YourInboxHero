@@ -7,6 +7,7 @@ trailing ".0", so downstream validation is identical for both formats.
 """
 import csv
 import io
+import zipfile
 from datetime import date, datetime
 from typing import List, Tuple
 
@@ -16,6 +17,9 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 # Importers cap rows at 1000; reading one past that lets them report the
 # overflow without ever materialising a huge (or decompression-bomb) sheet.
 MAX_DATA_ROWS = 1001
+# An .xlsx is a zip; a small upload can expand to gigabytes (zip bomb).
+# Real spreadsheets of 1000 rows unpack to a few MB.
+MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
 
 def _cell_to_str(value) -> str:
@@ -32,6 +36,14 @@ def _cell_to_str(value) -> str:
 
 def _read_xlsx(raw: bytes) -> Tuple[List[str], List[dict]]:
     from openpyxl import load_workbook
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            unpacked = sum(i.file_size for i in zf.infolist())
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Could not read the Excel file. Save it as .xlsx or CSV and try again.")
+    if unpacked > MAX_XLSX_UNCOMPRESSED_BYTES:
+        raise HTTPException(status_code=400, detail="This Excel file is too large to import. Split it or save it as CSV.")
 
     try:
         wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)

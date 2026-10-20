@@ -756,3 +756,33 @@ def test_update_me_disconnect_smtp_skips_verification():
         })
     assert resp.status_code == 200
     mock_verify.assert_not_called()
+
+
+def test_logout_is_persisted_so_it_survives_a_restart():
+    """Sign-outs used to live in process memory, so any restart/deploy
+    silently re-validated signed-out tokens. They must be in the DB (as a
+    hash, never the raw token)."""
+    import hashlib
+    from src.models.revoked_token import RevokedToken
+
+    session = SessionLocal()
+    try:
+        username = f"persist_{uuid.uuid4().hex[:6]}"
+        session.add(User(username=username, hashed_password=get_password_hash("pw123"), email_verified=True))
+        session.commit()
+    finally:
+        session.close()
+
+    client = TestClient(app)
+    token = client.post("/token", data={"username": username, "password": "pw123"}).json()["access_token"]
+    client.post("/logout", headers={"Authorization": f"Bearer {token}"})
+
+    session = SessionLocal()
+    try:
+        row = session.query(RevokedToken).filter(
+            RevokedToken.token_hash == hashlib.sha256(token.encode()).hexdigest()).first()
+        assert row is not None and row.expires_at is not None
+        assert session.query(RevokedToken).filter(RevokedToken.token_hash == token).first() is None
+    finally:
+        session.close()
+    assert client.get("/users/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401

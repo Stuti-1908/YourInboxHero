@@ -1,4 +1,5 @@
 """Authentication utilities with timezone-aware datetimes."""
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from passlib.context import CryptContext
@@ -7,7 +8,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import jwt
 
-from src.db import get_db
+from src.db import SessionLocal, get_db
+from src.models.revoked_token import RevokedToken
 from src.models.user import User
 from src.config.settings import get_settings
 
@@ -21,9 +23,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Simple in-memory set for token revocation for the sake of the requirement.
-# In production, this should be in Redis or DB.
-revoked_tokens = set()
 
 
 def verify_password(plain_password, hashed_password):
@@ -45,8 +44,25 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-def revoke_token(token: str):
-    revoked_tokens.add(token)
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def revoke_token(token: str) -> None:
+    """Persist a sign-out so it survives restarts. Expired revocations are
+    pruned on the way, since an expired token is rejected anyway."""
+    try:
+        exp = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})["exp"]
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+    except (jwt.PyJWTError, KeyError, TypeError):
+        return  # not one of our tokens: nothing it could unlock
+    db = SessionLocal()
+    try:
+        db.query(RevokedToken).filter(RevokedToken.expires_at < datetime.now(timezone.utc)).delete(synchronize_session=False)
+        db.merge(RevokedToken(token_hash=_token_hash(token), expires_at=expires_at))
+        db.commit()
+    finally:
+        db.close()
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -55,7 +71,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if token in revoked_tokens:
+    if db.query(RevokedToken).filter(RevokedToken.token_hash == _token_hash(token)).first():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
 
     try:

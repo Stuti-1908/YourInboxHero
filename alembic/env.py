@@ -32,7 +32,7 @@ from src.models.base import Base
 # for create_all()) was more complete.
 from src.models import (
     debtor, invoice, reminder, user, email_template, pending_subscription,
-    document_client, document_request, processed_stripe_event, sweep_run,
+    document_client, document_request, processed_stripe_event, sweep_run, revoked_token,
 )
 
 target_metadata = Base.metadata

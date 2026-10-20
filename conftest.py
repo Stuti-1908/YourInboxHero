@@ -19,7 +19,7 @@ os.environ["ENCRYPTION_KEY"] = _Fernet.generate_key().decode()
 # Now import and create tables (this import triggers src/db.py to create the engine)
 from src.db import engine  # noqa: E402
 from src.models.base import Base  # noqa: E402
-from src.models import debtor, invoice, reminder, user, email_template, pending_subscription, document_client, document_request, processed_stripe_event, sweep_run  # noqa: F401,E402
+from src.models import debtor, invoice, reminder, user, email_template, pending_subscription, document_client, document_request, processed_stripe_event, sweep_run, revoked_token  # noqa: F401,E402
 
 Base.metadata.create_all(bind=engine)
 

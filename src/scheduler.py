@@ -372,11 +372,6 @@ def _join_titles(titles):
     return ", ".join(quoted[:-1]) + f" and {quoted[-1]}"
 
 
-# Keeps a grouped SMS to a sane length; anything beyond this is summarised
-# ("and N more") and the client still has every link in their email.
-_MAX_DOCS_PER_SMS = 3
-
-
 def _document_sms_message(client_name, company_name, reqs):
     if len(reqs) == 1:
         req = reqs[0]
@@ -384,12 +379,13 @@ def _document_sms_message(client_name, company_name, reqs):
             f"Hi {client_name}, the document \"{req.title}\" requested by {company_name} is OVERDUE. "
             f"Please upload it here: {settings.frontend_url}/upload/{req.upload_token}"
         )
-    shown = reqs[:_MAX_DOCS_PER_SMS]
-    lines = [f"Hi {client_name}, {len(reqs)} documents requested by {company_name} are OVERDUE. Upload links:"]
-    lines += [f"{r.title}: {settings.frontend_url}/upload/{r.upload_token}" for r in shown]
-    if len(reqs) > len(shown):
-        lines.append(f"...and {len(reqs) - len(shown)} more (see your email).")
-    return "\n".join(lines)
+    # Several links would make one text cost several SMS segments; the
+    # client already has every upload link in their email, so point there
+    # and include the most overdue one for a one-tap start.
+    return (
+        f"Hi {client_name}, {len(reqs)} documents requested by {company_name} are OVERDUE. "
+        f"All upload links are in our email. First: {settings.frontend_url}/upload/{reqs[0].upload_token}"
+    )
 
 
 def run_document_sms_reminders(db: Session):

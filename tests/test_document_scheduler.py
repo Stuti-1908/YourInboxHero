@@ -260,7 +260,7 @@ def test_document_sms_groups_all_overdue_documents_for_a_client_into_one_text():
             session.close()
 
     sent_to_this_client = [c for c in mock_sms.call_args_list if c.kwargs['contact_email'].endswith('@example.com')
-                           and all(t in c.kwargs['message'] for t in ("W-9", "Lease", "ID"))]
+                           and "3 documents" in c.kwargs["message"]]
     assert len(sent_to_this_client) == 1
     assert "3 documents" in sent_to_this_client[0].kwargs['message']
 
@@ -306,3 +306,12 @@ def test_document_voice_groups_all_overdue_documents_for_a_client_into_one_call(
         assert session.query(User).get(user_id).chases_used == 1
     finally:
         session.close()
+
+
+def test_grouped_document_sms_stays_short_whatever_the_document_count():
+    from types import SimpleNamespace as NS
+    from src.scheduler import _document_sms_message
+    reqs = [NS(title=f"Very long document title number {i} for tax year 2026", upload_token=f"doc_{i:012d}") for i in range(10)]
+    msg = _document_sms_message("Jane Smith", "Acme Bookkeeping LLC", reqs)
+    assert "10 documents" in msg and "doc_000000000000" in msg
+    assert len(msg) <= 306  # at most two GSM segments, regardless of count

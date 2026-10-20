@@ -209,3 +209,17 @@ def test_import_commit_groups_one_email_per_client_and_skips_open_duplicates():
     finally:
         session.close()
     assert sorted(r.title for r in _requests_for(existing_id)) == ["Payslip", "Tax return"]
+
+
+def test_import_rejects_xlsx_that_unpacks_to_huge_size():
+    """A tiny upload can be a zip bomb; refuse before openpyxl inflates it."""
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("xl/worksheets/sheet1.xml", b"0" * (60 * 1024 * 1024))
+    raw = buf.getvalue()
+    assert len(raw) < 1024 * 1024  # small on the wire
+    resp = client.post("/documents/import/preview", files={"file": ("bomb.xlsx", raw,
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert resp.status_code == 400
+    assert "too large" in resp.json()["detail"]
