@@ -162,7 +162,8 @@ def start_scheduler():
     )
     scheduler.add_job(
         run_voice_calls_hourly,
-        trigger=CronTrigger(minute=0, timezone="UTC"),
+        # Half past, so it never starts alongside the 08:00 daily run.
+        trigger=CronTrigger(minute=30, timezone="UTC"),
         id="voice_calls_hourly_job",
         name="Hourly Voice Call Window Check",
         replace_existing=True,

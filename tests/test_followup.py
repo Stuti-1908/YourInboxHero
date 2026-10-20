@@ -430,3 +430,81 @@ def stubbed_no_handoff():
          patch("src.services.ghl_service.send_sms", return_value=True), \
          patch("src.services.ghl_service.trigger_voice_call", return_value=True):
         yield
+
+
+# ---------------------------------------------------------------- review fixes
+
+def test_overlapping_runs_cannot_send_the_same_step_twice():
+    """Two runs that read the invoice before either committed (the 08:00
+    daily/hourly overlap the reviewer found) must still send only once."""
+    inv_id, _ = _new_invoice(due_in=0)
+    a, b = SessionLocal(), SessionLocal()
+    try:
+        a.query(Invoice).filter(Invoice.id == inv_id).one()   # both sessions hold the
+        b.query(Invoice).filter(Invoice.id == inv_id).one()   # pre-send row in memory
+        with stubbed() as box:
+            run_invoice_followups(a, today=TODAY)
+            run_invoice_followups(b, today=TODAY)
+            run_invoice_followups(b, today=TODAY + timedelta(days=1))
+    finally:
+        a.close()
+        b.close()
+    assert [stage for i, stage in box.emails if i == inv_id] == ["due"]
+    assert _get(Invoice, inv_id).followup_step == 3
+
+
+def test_crash_after_sending_does_not_cause_a_resend():
+    inv_id, _ = _new_invoice(due_in=0)
+    with stubbed() as box, patch("src.services.followup.record_chase_used", side_effect=RuntimeError("db hiccup")):
+        _run(0, 0)
+    with stubbed() as box2:
+        _run(1, 0)
+    assert [stage for i, stage in box.emails if i == inv_id] == ["due"]
+    assert not [e for e in box2.emails if e[0] == inv_id]
+
+
+def test_waiting_call_is_released_for_the_next_hourly_run():
+    inv_id, _ = _new_invoice(due_in=-25, status=InvoiceStatus.overdue, step=6)
+    with stubbed(call_window=False):
+        _run(25, -25, kinds=HOURLY_KINDS)
+    assert _get(Invoice, inv_id).followup_step == 6  # claim released, not lost
+
+
+def test_hourly_run_never_rewrites_email_progress():
+    inv_id, _ = _new_invoice(due_in=3)  # stored step 0, Day -7 email already expired
+    with stubbed():
+        _run(-3, 3, kinds=HOURLY_KINDS)
+    assert _get(Invoice, inv_id).followup_step == 0
+    with stubbed():
+        _run(-3, 3)
+    assert _get(Invoice, inv_id).followup_step == 1
+
+
+def test_default_date_is_utc():
+    from datetime import datetime, timezone
+    from src.services import followup
+    assert followup._utc_today() == datetime.now(timezone.utc).date()
+
+
+def test_failed_owner_handover_is_retried_next_day():
+    inv_id, _ = _new_invoice(due_in=-26, status=InvoiceStatus.overdue, step=7)
+    with stubbed(), patch("src.services.account_notifications.send_followup_handoff_email", side_effect=RuntimeError("Resend down")):
+        _run(26, -26)
+    assert _get(Invoice, inv_id).followup_step == 7
+    with stubbed() as box:
+        _run(27, -26)
+    assert _get(Invoice, inv_id).followup_step == FINISHED
+    assert len([h for h in box.handoffs if h["what"] == f"invoice {_get(Invoice, inv_id).invoice_number}"]) == 1
+
+
+def test_error_before_anything_is_sent_releases_the_step_for_retry():
+    """A database error while preparing the owner handover (before any
+    message leaves) must not silently finish the schedule."""
+    inv_id, _ = _new_invoice(due_in=-26, status=InvoiceStatus.overdue, step=7)
+    with stubbed() as box, patch("src.services.followup._history", side_effect=RuntimeError("db error")):
+        _run(26, -26)
+    assert not [h for h in box.handoffs if inv_id]
+    assert _get(Invoice, inv_id).followup_step == 7
+    with stubbed() as box:
+        _run(27, -26)
+    assert _get(Invoice, inv_id).followup_step == FINISHED

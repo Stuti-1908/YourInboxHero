@@ -21,10 +21,18 @@ number, no consent, plan without calls) is skipped too. The owner handover
 never expires, so every item that runs out of steps unpaid ends with it.
 
 Nothing is sent for paid, paused or manual invoices, approved or submitted
-documents, inactive subscriptions, or once the monthly allowance is used up
-(the item simply waits, without skipping, until there's allowance again).
-The owner handover is free: it isn't a message to a client.
+documents, inactive subscriptions, or once the monthly allowance is used up.
+While paused like that, a step waits out its grace period; if the pause
+lasts longer, that step is dropped and the schedule resumes at the next one
+(a "due tomorrow" email a week late would only confuse the client). The
+owner handover never expires and is free: it isn't a message to a client.
+
+Each step is claimed in the database (followup_step moved forward only if
+it still holds the value we read) before anything is sent, so overlapping
+runs can never send the same step twice, and a crash after sending can't
+cause a resend. A step that didn't go out is released for a later run.
 """
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Iterable, List, Optional
@@ -127,6 +135,25 @@ def _log(db: Session, channel: Channel, ok: bool, payload: dict, invoice_id=None
     ))
 
 
+# Set the instant a message is handed to a provider. If a step raises after
+# this, the message may be out, so its claim is kept (never a resend); if it
+# raises before, nothing went out and the claim is released for a retry.
+_message_left = ContextVar("followup_message_left", default=False)
+
+
+def _provider_call(fn, **kwargs) -> bool:
+    """Texts, calls and the owner handover: a provider error counts as a
+    failed attempt (logged and retried later). Senders that return nothing
+    on success (the handover email) count as delivered."""
+    try:
+        _message_left.set(True)
+        result = fn(**kwargs)
+        return True if result is None else bool(result)
+    except Exception as exc:
+        logger.error("followup_provider_call_failed", provider=getattr(fn, "__name__", "?"), error=str(exc))
+        return False
+
+
 def _contact_ok_for_phone(contact) -> Optional[str]:
     """None if texts/calls are allowed, otherwise the reason they're not."""
     if not contact.phone:
@@ -168,7 +195,8 @@ def _send_invoice_step(db: Session, inv: Invoice, idx: int, step: Step) -> bool:
 
     if step.kind == "handoff":
         from src.services.account_notifications import send_followup_handoff_email
-        send_followup_handoff_email(
+        return _provider_call(
+            send_followup_handoff_email,
             user=user,
             what=f"invoice {inv.invoice_number}",
             outstanding_word="unpaid",
@@ -178,7 +206,6 @@ def _send_invoice_step(db: Session, inv: Invoice, idx: int, step: Step) -> bool:
             skipped=_skipped_reasons(debtor, user),
             dashboard_path="/dashboard/invoices",
         )
-        return True
 
     if step.kind in ("sms", "voice"):
         reason = _contact_ok_for_phone(debtor)
@@ -199,6 +226,7 @@ def _send_invoice_step(db: Session, inv: Invoice, idx: int, step: Step) -> bool:
     if step.kind == "email":
         from src.services.email import send_reminder_email
         try:
+            _message_left.set(True)
             send_reminder_email(inv, stage=step.stage)
             ok = True
         except Exception as exc:
@@ -207,22 +235,23 @@ def _send_invoice_step(db: Session, inv: Invoice, idx: int, step: Step) -> bool:
         _log(db, Channel.email, ok, {**payload, "debtor_email": debtor.email}, invoice_id=inv.id)
     elif step.kind == "sms":
         from src.services.ghl_service import send_sms
-        ok = bool(send_sms(phone=debtor.phone, message=_invoice_sms_text(db, inv),
-                           contact_name=debtor.name, contact_email=debtor.email))
+        ok = _provider_call(send_sms, phone=debtor.phone, message=_invoice_sms_text(db, inv),
+                            contact_name=debtor.name, contact_email=debtor.email)
         _log(db, Channel.sms, ok, {**payload, "debtor_phone": debtor.phone}, invoice_id=inv.id)
         if ok:
             inv.sms_sent_count = (inv.sms_sent_count or 0) + 1
     else:
         from src.services.ghl_service import trigger_voice_call
         company = user.company_name or "YourInboxHero"
-        ok = bool(trigger_voice_call(
+        ok = _provider_call(
+            trigger_voice_call,
             phone=debtor.phone,
             message=(f"This is an automated call from {company}. Invoice number {inv.invoice_number} "
                      f"for ${inv.amount:.2f} is overdue. Please make your payment as soon as possible."),
             contact_name=debtor.name, contact_email=debtor.email, company_name=company,
             reason="invoice", item_description=inv.invoice_number,
             amount=f"{inv.amount:.2f}", due_date=inv.due_date.isoformat(),
-        ))
+        )
         _log(db, Channel.voice, ok, {**payload, "debtor_phone": debtor.phone}, invoice_id=inv.id)
         if ok:
             inv.voice_call_count = (inv.voice_call_count or 0) + 1
@@ -234,33 +263,74 @@ def _send_invoice_step(db: Session, inv: Invoice, idx: int, step: Step) -> bool:
     return ok
 
 
+def _utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def _claim(db: Session, model, ids_and_steps, new_step: int) -> list:
+    """Move items to new_step only if nobody else moved them first. This is
+    what stops the daily and hourly runs (or two overlapping runs) from
+    both sending the same step: the step is claimed in the database before
+    anything goes out. Returns the ids that were claimed."""
+    claimed = []
+    for item_id, old_step in ids_and_steps:
+        n = db.query(model).filter(model.id == item_id, model.followup_step == old_step).update(
+            {model.followup_step: new_step}, synchronize_session=False)
+        if n:
+            claimed.append(item_id)
+    db.commit()
+    return claimed
+
+
+def _release(db: Session, model, ids, claimed_step: int, back_to: int) -> None:
+    """Undo a claim when the step didn't go out (send failed, or it has to
+    wait for the calling window or allowance), so a later run retries it."""
+    db.query(model).filter(model.id.in_(ids), model.followup_step == claimed_step).update(
+        {model.followup_step: back_to}, synchronize_session=False)
+    db.commit()
+
+
 def run_invoice_followups(db: Session, kinds: Iterable[str] = DAILY_KINDS, today: Optional[date] = None) -> int:
-    """Run whatever step each open invoice is owed today. Returns the number
-    of steps sent or skipped."""
+    """Run whatever step each open invoice is owed today (UTC). Returns the
+    number of steps sent or skipped."""
     kinds = frozenset(kinds)
-    today = today or date.today()
+    persist_skips = "email" in kinds  # only the daily run records skipped steps
+    today = today or _utc_today()
     done = 0
     invoices = db.query(Invoice).filter(
         Invoice.status.in_(OPEN_INVOICE_STATUSES),
         Invoice.followup_step < FINISHED,
     ).all()
     for inv in invoices:
+        inv_id, stored = inv.id, inv.followup_step
         try:
             if inv.debtor.user.subscription_status != "active":
                 continue
             offset = (today - inv.due_date).days
-            idx, step = current_step(inv.followup_step, offset)
-            if idx != inv.followup_step:
-                inv.followup_step = idx
-            if step is not None and step.day <= offset and step.kind in kinds:
-                if _send_invoice_step(db, inv, idx, step):
-                    inv.followup_step = idx + 1
-                    done += 1
-            # Commit per invoice so one failure never rolls back another's send.
-            db.commit()
+            idx, step = current_step(stored, offset)
+            due_now = step is not None and step.day <= offset and step.kind in kinds
+            if not due_now:
+                if persist_skips and idx != stored:
+                    _claim(db, Invoice, [(inv_id, stored)], idx)
+                continue
+            if not _claim(db, Invoice, [(inv_id, stored)], idx + 1):
+                continue  # another run got here first
+            _message_left.set(False)
+            try:
+                sent = _send_invoice_step(db, inv, idx, step)
+                db.commit()
+            except Exception:
+                db.rollback()
+                if not _message_left.get():
+                    _release(db, Invoice, [inv_id], idx + 1, idx)
+                raise
+            if sent:
+                done += 1
+            else:
+                _release(db, Invoice, [inv_id], idx + 1, idx)
         except Exception as exc:
             db.rollback()
-            logger.error("invoice_followup_failed", invoice_id=inv.id, error=str(exc), exc_info=True)
+            logger.error("invoice_followup_failed", invoice_id=inv_id, error=str(exc), exc_info=True)
     return done
 
 
@@ -276,7 +346,8 @@ def _send_document_group(db: Session, docs: List[DocumentRequest], idx: int, ste
 
     if step.kind == "handoff":
         from src.services.account_notifications import send_followup_handoff_email
-        send_followup_handoff_email(
+        return _provider_call(
+            send_followup_handoff_email,
             user=user,
             what=(f'"{titles[0]}"' if len(docs) == 1 else f"{len(docs)} documents from {client.name}"),
             outstanding_word="not received",
@@ -286,7 +357,6 @@ def _send_document_group(db: Session, docs: List[DocumentRequest], idx: int, ste
             skipped=_skipped_reasons(client, user),
             dashboard_path="/documents",
         )
-        return True
 
     if step.kind in ("sms", "voice"):
         reason = _contact_ok_for_phone(client)
@@ -307,6 +377,7 @@ def _send_document_group(db: Session, docs: List[DocumentRequest], idx: int, ste
     if step.kind == "email":
         from src.services.document_email import send_document_request_email
         try:
+            _message_left.set(True)
             send_document_request_email(docs)
             ok = True
         except Exception as exc:
@@ -316,22 +387,23 @@ def _send_document_group(db: Session, docs: List[DocumentRequest], idx: int, ste
     elif step.kind == "sms":
         from src.services.ghl_service import send_sms
         company = user.company_name or "YourInboxHero"
-        ok = bool(send_sms(phone=client.phone, message=_document_sms_message(client.name, company, docs),
-                           contact_name=client.name, contact_email=client.email))
+        ok = _provider_call(send_sms, phone=client.phone, message=_document_sms_message(client.name, company, docs),
+                            contact_name=client.name, contact_email=client.email)
         channel = Channel.sms
     else:
         from src.services.ghl_service import trigger_voice_call
         company = user.company_name or "YourInboxHero"
         joined = _join_titles(titles)
         single = len(docs) == 1
-        ok = bool(trigger_voice_call(
+        ok = _provider_call(
+            trigger_voice_call,
             phone=client.phone,
             message=(f"This is an automated call from {company}. The {'document' if single else 'documents'} {joined} "
                      f"we requested {'is' if single else 'are'} overdue. Please upload {'it' if single else 'them'} as soon as possible."),
             contact_name=client.name, contact_email=client.email, company_name=company,
             reason="document", item_description=joined.replace('"', ''),
             amount="", due_date=docs[0].due_date.isoformat(),
-        ))
+        )
         channel = Channel.voice
 
     now = _now()
@@ -351,31 +423,48 @@ def _send_document_group(db: Session, docs: List[DocumentRequest], idx: int, ste
 
 def run_document_followups(db: Session, kinds: Iterable[str] = DAILY_KINDS, today: Optional[date] = None) -> int:
     kinds = frozenset(kinds)
-    today = today or date.today()
+    persist_skips = "email" in kinds
+    today = today or _utc_today()
     groups = {}
     docs = db.query(DocumentRequest).filter(
         DocumentRequest.status.in_(OPEN_DOCUMENT_STATUSES),
         DocumentRequest.followup_step < FINISHED,
     ).order_by(DocumentRequest.due_date, DocumentRequest.title).all()
+    skips = {}
     for d in docs:
         if d.client.user.subscription_status != "active":
             continue
         offset = (today - d.due_date).days
         idx, step = current_step(d.followup_step, offset)
-        if idx != d.followup_step:
-            d.followup_step = idx
         if step is not None and step.day <= offset and step.kind in kinds:
-            groups.setdefault((d.client_id, idx), []).append(d)
-    db.commit()
+            groups.setdefault((d.client_id, idx), []).append((d, d.followup_step))
+        elif persist_skips and idx != d.followup_step:
+            skips.setdefault(idx, []).append((d.id, d.followup_step))
+    for idx, pairs in skips.items():
+        _claim(db, DocumentRequest, pairs, idx)
 
     done = 0
-    for (client_id, idx), group in groups.items():
+    for (client_id, idx), members in groups.items():
         try:
-            if _send_document_group(db, group, idx, SCHEDULE[idx]):
-                for d in group:
-                    d.followup_step = idx + 1
+            claimed = set(_claim(db, DocumentRequest, [(d.id, old) for d, old in members], idx + 1))
+            group = [d for d, _ in members if d.id in claimed]
+            if not group:
+                continue
+            for d in group:
+                db.refresh(d)
+            _message_left.set(False)
+            try:
+                sent = _send_document_group(db, group, idx, SCHEDULE[idx])
+                db.commit()
+            except Exception:
+                db.rollback()
+                if not _message_left.get():
+                    _release(db, DocumentRequest, list(claimed), idx + 1, idx)
+                raise
+            if sent:
                 done += 1
-            db.commit()
+            else:
+                _release(db, DocumentRequest, list(claimed), idx + 1, idx)
         except Exception as exc:
             db.rollback()
             logger.error("document_followup_failed", client_id=client_id, error=str(exc), exc_info=True)
