@@ -65,7 +65,7 @@ export const CreateDebtor = ({ onSuccess }: { onSuccess: () => void }) => {
               style={{ marginTop: '3px' }}
             />
             <span>
-              This debtor has consented to receive automated phone call reminders.
+              This debtor has agreed to receive automated text and phone call reminders.
               <br />
               <small style={{ color: 'var(--color-text-light)', fontSize: '0.8rem' }}>
                 Required before voice-call escalation can be used for this debtor — SMS and email reminders are unaffected.

@@ -130,6 +130,31 @@ def send_welcome_email(user: User) -> None:
         logger.error("welcome_email_failed", user_id=user.id, error=str(exc))
 
 
+def send_followup_handoff_email(user: User, what: str, outstanding_word: str, items: list, contact,
+                                history: list, skipped: str | None, dashboard_path: str) -> None:
+    """Tells the account owner that automatic follow-up has finished and the
+    item is still outstanding, with everything we sent and the contact's
+    details. Raises on failure so the follow-up step is retried next run."""
+    settings = get_settings()
+    tmpl = _jinja_env.get_template('followup_handoff_email.html')
+    html = tmpl.render(
+        owner_name=user.company_name or 'there',
+        what=what,
+        outstanding_word=outstanding_word,
+        items=items,
+        contact_name=contact.name,
+        contact_email=contact.email,
+        contact_phone=contact.phone,
+        contact_consent=bool(contact.voice_call_consent),
+        history=history,
+        skipped=skipped,
+        dashboard_url=f"{settings.frontend_url}{dashboard_path}",
+    )
+    subject = f"Still {outstanding_word} after every reminder: {what} ({contact.name})"
+    _send_via_resend(to_email=user.username, subject=subject, html_body=html)
+    logger.info("followup_handoff_sent", user_id=user.id, what=what)
+
+
 def reset_admin_invite_usage(db: Session) -> int:
     """Monthly chases_used reset for accounts with no Stripe subscription
     to trigger invoice.payment_succeeded (admin-email and invite-code

@@ -39,6 +39,8 @@ class DocumentRequest(Base):
     escalation_started_at = Column(TIMESTAMP(timezone=True), nullable=True)
     sms_sent_count = Column(Integer, nullable=False, default=0)
     voice_call_count = Column(Integer, nullable=False, default=0)
+    # How far through the follow-up schedule this request is (see src/services/followup.py).
+    followup_step = Column(Integer, nullable=False, default=0, server_default="0")
 
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 

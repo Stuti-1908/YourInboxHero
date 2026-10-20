@@ -65,8 +65,8 @@ const PlanCheckoutModal = ({ plan, planName, onClose }: { plan: string; planName
 // one orchestrated motion moment on the page.
 const TIMELINE_STAGES = [
   { label: 'Invoice sent', date: 'Mar 3', state: 'sent', detail: 'INV-0148 · $4,200 · Net 30' },
-  { label: 'Reminder sent', date: 'Mar 28', state: 'reminder', detail: 'Due in 2 days — email sent automatically' },
-  { label: 'Due date passed', date: 'Apr 2', state: 'due', detail: 'Escalation begins — SMS queued' },
+  { label: 'Reminder sent', date: 'Mar 26', state: 'reminder', detail: 'Due in 7 days — email sent automatically' },
+  { label: 'Due today', date: 'Apr 2', state: 'due', detail: 'Due-today email sent — texts follow if unpaid' },
   { label: 'Paid in full', date: 'Apr 4', state: 'paid', detail: '$4,200 received · invoice closed' },
 ];
 
@@ -200,7 +200,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
     },
     {
       title: 'Overdue gets escalated, not ignored',
-      body: 'If a client still hasn\'t paid, reminders move to a daily text, then to an automated AI voice call made in your company\'s name. Texts and calls only go to contacts who have agreed to them, and calls only happen inside the hours you set.',
+      body: 'If a client still hasn\'t paid, they get two text messages and then an automated AI voice call made in your company\'s name. If it\'s still unpaid after that, we stop and send you a summary of everything we tried, with their contact details. Texts and calls only go to contacts who have agreed to them, and calls only happen inside the hours you set.',
     },
     {
       title: 'You see everything, always',

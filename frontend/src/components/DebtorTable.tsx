@@ -46,7 +46,7 @@ export const DebtorTable = () => {
             <th>Email</th>
             <th>Phone</th>
             <th>Type</th>
-            <th>Voice Call Consent</th>
+            <th>Texts &amp; Calls Consent</th>
             <th>Actions</th>
           </tr>
         </thead>

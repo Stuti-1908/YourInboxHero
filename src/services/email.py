@@ -45,9 +45,14 @@ _STATUS_COPY = {
     },
 }
 _DEFAULT_STATUS_COPY = _STATUS_COPY["upcoming"]
+_DEFAULT_SUBJECTS = {
+    "upcoming": "Reminder: Invoice {number} from {company} is due on {due}",
+    "due": "Invoice {number} from {company} is due today",
+    "overdue": "Invoice {number} from {company} is overdue",
+}
 
 
-def render_template(invoice: Any, pdf_attached: bool = False) -> str:
+def render_template(invoice: Any, pdf_attached: bool = False, stage: Optional[str] = None) -> str:
     """Render the default (non-custom-template) reminder email.
 
     Pulls plain, pre-formatted values out of the invoice/debtor/user ORM
@@ -59,7 +64,7 @@ def render_template(invoice: Any, pdf_attached: bool = False) -> str:
     env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html']))
     tmpl = env.get_template('reminder_email.html')
 
-    status_value = invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status)
+    status_value = stage or (invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status))
     copy = _STATUS_COPY.get(status_value, _DEFAULT_STATUS_COPY)
     company_name = invoice.debtor.user.company_name or 'YourInboxHero'
 
@@ -253,13 +258,19 @@ def _send_via_resend(
     return {"status": "success", "method": "resend", "status_code": response.status_code, "id": response.json().get("id")}
 
 
-def send_reminder_email(invoice: Any) -> Dict[str, Any]:
+def send_reminder_email(invoice: Any, stage: Optional[str] = None) -> Dict[str, Any]:
     """
     Send reminder email for an invoice.
 
     Tries custom SMTP first, falls back to Resend.
     Uses retry logic for transient failures.
+
+    stage ("upcoming" / "due" / "overdue") picks the wording and the
+    customer's template; it defaults to the invoice's status. The follow-up
+    schedule passes it explicitly, since an invoice is still "upcoming" on
+    its due date until the overdue transition runs the next day.
     """
+    stage = stage or (invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status))
     correlation_id = getattr(invoice, 'correlation_id', 'unknown')
     user = invoice.debtor.user
     company_name = user.company_name or 'YourInboxHero'
@@ -288,7 +299,7 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
         try:
             custom_template = db.query(EmailTemplate).filter(
                 EmailTemplate.user_id == user.id,
-                EmailTemplate.template_type == invoice.status.value
+                EmailTemplate.template_type == stage
             ).first()
         finally:
             db.close()
@@ -324,8 +335,9 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
         # user-supplied, so escape before turning newlines into <br>.
         html_body = html.escape(body).replace('\n', '<br>')
     else:
-        subject = f'Reminder: Invoice {invoice.invoice_number} from {company_name} is due'
-        html_body = render_template(invoice, pdf_attached=bool(pdf_attachment))
+        subject = _DEFAULT_SUBJECTS.get(stage, _DEFAULT_SUBJECTS["upcoming"]).format(
+            number=invoice.invoice_number, company=company_name, due=invoice.due_date)
+        html_body = render_template(invoice, pdf_attached=bool(pdf_attachment), stage=stage)
 
     # Try custom SMTP first, if entitled
     smtp_password = decrypt_secret(user.smtp_password) if has_custom_smtp else None

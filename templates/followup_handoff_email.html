@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Follow-up finished: still unpaid</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:Helvetica, Arial, sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:32px 0;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background-color:#1f2937; padding:24px 32px;">
+            <span style="color:#ffffff; font-size:20px; font-weight:bold;">YourInboxHero</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0;">
+            <div style="background-color:#dc2626; color:#ffffff; padding:10px 32px; font-size:13px; font-weight:bold; letter-spacing:0.5px; text-transform:uppercase;">
+              Needs your attention
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <p style="margin:0 0 16px 0; font-size:16px; color:#111827; line-height:1.5;">Hi {{ owner_name }},</p>
+            <p style="margin:0 0 24px 0; font-size:15px; color:#374151; line-height:1.6;">
+              We've finished every automatic reminder for {{ what }}, and it's still {{ outstanding_word }}. We've stopped contacting {{ contact_name }} automatically. It's a good moment to reach out to them personally.
+            </p>
+
+            <!-- What's outstanding -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:20px;">
+              <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 8px 0; font-size:13px; color:#6b7280; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Still outstanding</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  {% for row in items %}
+                  <tr>
+                    <td style="padding:5px 0; font-size:14px; color:#111827; font-weight:bold;">{{ row.label }}</td>
+                    <td style="padding:5px 0; font-size:14px; color:#111827; text-align:right;">{{ row.detail }}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+              </td></tr>
+            </table>
+
+            <!-- Contact details -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:20px;">
+              <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 8px 0; font-size:13px; color:#6b7280; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">Who we contacted</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding:4px 0; font-size:14px; color:#6b7280;">Name</td><td style="padding:4px 0; font-size:14px; color:#111827; text-align:right;">{{ contact_name }}</td></tr>
+                  <tr><td style="padding:4px 0; font-size:14px; color:#6b7280;">Email</td><td style="padding:4px 0; font-size:14px; color:#111827; text-align:right;">{{ contact_email }}</td></tr>
+                  <tr><td style="padding:4px 0; font-size:14px; color:#6b7280;">Phone</td><td style="padding:4px 0; font-size:14px; color:#111827; text-align:right;">{{ contact_phone or "Not on file" }}</td></tr>
+                  <tr><td style="padding:4px 0; font-size:14px; color:#6b7280;">Agreed to calls and texts</td><td style="padding:4px 0; font-size:14px; color:#111827; text-align:right;">{{ "Yes" if contact_consent else "No" }}</td></tr>
+                </table>
+              </td></tr>
+            </table>
+
+            <!-- History -->
+            <p style="margin:0 0 8px 0; font-size:13px; color:#6b7280; font-weight:bold; text-transform:uppercase; letter-spacing:0.5px;">What we sent</p>
+            {% if history %}
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb; border-radius:6px; margin-bottom:24px;">
+              {% for h in history %}
+              <tr>
+                <td style="padding:8px 14px; font-size:14px; color:#374151; border-bottom:1px solid #f3f4f6;">{{ h.date }}</td>
+                <td style="padding:8px 14px; font-size:14px; color:#111827; border-bottom:1px solid #f3f4f6;">{{ h.channel }}</td>
+                <td style="padding:8px 14px; font-size:14px; text-align:right; border-bottom:1px solid #f3f4f6; color:{{ '#15803d' if h.ok else '#b91c1c' }};">{{ "Sent" if h.ok else "Failed" }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+            {% else %}
+            <p style="margin:0 0 24px 0; font-size:14px; color:#374151;">No reminders could be delivered (for example, no phone number or no consent on file).</p>
+            {% endif %}
+            {% if skipped %}
+            <p style="margin:-12px 0 24px 0; font-size:13px; color:#6b7280; line-height:1.6;">Not sent: {{ skipped }}</p>
+            {% endif %}
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 8px auto;">
+              <tr>
+                <td style="border-radius:6px; background-color:#1f2937;">
+                  <a href="{{ dashboard_url }}" target="_blank" style="display:inline-block; padding:14px 32px; font-size:15px; color:#ffffff; text-decoration:none; font-weight:bold;">Open in your dashboard</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px; background-color:#f9fafb; border-top:1px solid #e5e7eb;">
+            <p style="margin:0; font-size:12px; color:#9ca3af; line-height:1.5;">Sent to the YourInboxHero account owner. This message doesn't count towards your monthly reminders.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
