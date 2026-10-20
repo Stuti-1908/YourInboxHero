@@ -196,11 +196,11 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
     },
     {
       title: 'We remind, before it\'s due',
-      body: 'A branded email goes out a few days ahead of the due date. No automation kicks in after the invoice is overdue — that stays out of automated hands by design.',
+      body: 'A branded email goes out ahead of the due date, on the day it\'s due, and once it\'s overdue. It\'s sent from your own Gmail or Yahoo if you connect it.',
     },
     {
       title: 'Overdue gets escalated, not ignored',
-      body: 'If a client still hasn\'t paid, the reminder moves to a text message, and eventually a call from your team — never a robocall, never a stranger\'s name on the line.',
+      body: 'If a client still hasn\'t paid, reminders move to a daily text, then to an automated AI voice call made in your company\'s name. Texts and calls only go to contacts who have agreed to them, and calls only happen inside the hours you set.',
     },
     {
       title: 'You see everything, always',
@@ -210,7 +210,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
 
   const guardrails = [
     { title: 'Business invoices only', body: 'Built for B2B receivables — not personal debt collection, and never treated like it.' },
-    { title: 'Never chases after the due date automatically', body: 'Pre-due reminders are automated. Anything past due moves through a tier your team controls, on a schedule you set.' },
+    { title: 'Consent and calling hours, built in', body: 'Texts and calls only reach contacts you\'ve marked as having agreed to them. Calls stay inside the days and hours you choose, and you can pause any client at any time.' },
     { title: 'Every send is logged', body: 'A full audit trail for every reminder — channel, timestamp, and content — attached to the invoice it belongs to.' },
   ];
 
@@ -236,7 +236,7 @@ export const LandingPage = ({ onGetStarted, onSignIn }: { onGetStarted: () => vo
             </h1>
             <p className="hero-subtitle">
               YourInboxHero tracks every invoice you send and follows up before and after
-              the due date — email, then text, then a call from your team — so you stop
+              the due date — email, then text, then an automated call — so you stop
               chasing payments by hand.
             </p>
             <div className="hero-cta">
