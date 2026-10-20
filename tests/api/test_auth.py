@@ -487,10 +487,11 @@ def test_update_me_encrypts_smtp_password_at_rest():
             subscription_status="active", subscription_plan="scale", chases_limit=750,
         )
         client = TestClient(app)
-        resp = client.put("/users/me", json={
-            "smtp_host": "smtp.gmail.com", "smtp_port": "587",
-            "smtp_username": username, "smtp_password": "plaintext-app-password",
-        })
+        with patch("src.api.auth.verify_smtp_credentials", return_value=None):
+            resp = client.put("/users/me", json={
+                "smtp_host": "smtp.gmail.com", "smtp_port": "587",
+                "smtp_username": username, "smtp_password": "plaintext-app-password",
+            })
         assert resp.status_code == 200
     finally:
         if old_override:
@@ -697,3 +698,61 @@ def test_update_me_rejects_start_hour_after_end_hour():
             app.dependency_overrides[get_current_user] = old_override
         else:
             app.dependency_overrides.pop(get_current_user, None)
+
+
+def _put_me_as(user_id, username, payload):
+    from src.auth import get_current_user
+    old_override = app.dependency_overrides.get(get_current_user)
+    try:
+        app.dependency_overrides[get_current_user] = lambda: User(
+            id=user_id, username=username, email_verified=True,
+            subscription_status="active", subscription_plan="scale", chases_limit=750,
+        )
+        return TestClient(app).put("/users/me", json=payload)
+    finally:
+        if old_override:
+            app.dependency_overrides[get_current_user] = old_override
+        else:
+            app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_update_me_rejects_bad_smtp_credentials_and_does_not_save():
+    user_id, username = _make_active_user_for_voice_settings()
+    with patch("src.api.auth.verify_smtp_credentials", side_effect=ValueError("smtp.gmail.com rejected the email/password (535).")):
+        resp = _put_me_as(user_id, username, {
+            "smtp_host": "smtp.gmail.com", "smtp_port": "587",
+            "smtp_username": username, "smtp_password": "wrong",
+        })
+    assert resp.status_code == 400
+    assert "rejected" in resp.json()["detail"]
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(id=user_id).first()
+        assert not user.smtp_password
+        assert not user.smtp_host
+    finally:
+        session.close()
+
+
+def test_update_me_rejects_unlisted_smtp_host():
+    """An arbitrary host would let a customer make our server connect to
+    internal addresses (SSRF)."""
+    user_id, username = _make_active_user_for_voice_settings()
+    with patch("src.api.auth.verify_smtp_credentials") as mock_verify:
+        resp = _put_me_as(user_id, username, {
+            "smtp_host": "169.254.169.254", "smtp_port": "587",
+            "smtp_username": username, "smtp_password": "x",
+        })
+    assert resp.status_code == 422
+    mock_verify.assert_not_called()
+
+
+def test_update_me_disconnect_smtp_skips_verification():
+    user_id, username = _make_active_user_for_voice_settings()
+    with patch("src.api.auth.verify_smtp_credentials") as mock_verify:
+        resp = _put_me_as(user_id, username, {
+            "smtp_host": "", "smtp_port": "", "smtp_username": "", "smtp_password": "",
+        })
+    assert resp.status_code == 200
+    mock_verify.assert_not_called()

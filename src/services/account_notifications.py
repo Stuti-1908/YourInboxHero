@@ -8,7 +8,7 @@ the customer's brand to their debtors.
 from datetime import datetime, timezone
 
 import structlog
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ logger = structlog.get_logger(__name__)
 
 WARNING_THRESHOLD = 0.8  # fraction of chases_limit that triggers the 80% warning
 
-_jinja_env = Environment(loader=FileSystemLoader('templates'))
+_jinja_env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html']))
 
 
 def _plan_label(plan: str | None) -> str:

@@ -207,3 +207,45 @@ def test_commit_skips_row_with_duplicate_invoice_number_but_continues():
         assert session.query(Invoice).filter(Invoice.invoice_number == good_number).first() is not None
     finally:
         session.close()
+
+
+def test_commit_matches_existing_debtor_email_case_insensitively():
+    """Debtors created by hand keep their original case; an import of the
+    same address in a different case must reuse that debtor, not fork it."""
+    local = uuid.uuid4().hex[:8]
+    mixed = f"{local.upper()}@Example.com"
+    session = SessionLocal()
+    try:
+        session.add(Debtor(user_id="test-id", name="Mixed Case Co", email=mixed, debtor_type="business"))
+        session.commit()
+    finally:
+        session.close()
+
+    preview = client.post("/invoice/import/preview", files=_csv_file(
+        "debtor_name,debtor_email,invoice_number,amount,due_date\n"
+        f"Mixed Case Co,{mixed.lower()},INV-CASE-{local},50,{(date.today() + timedelta(days=5)).isoformat()}\n"))
+    rows = preview.json()["valid_rows"]
+    assert rows[0]["debtor_exists"] is True
+
+    resp = client.post("/invoice/import/commit", json={"rows": rows})
+    assert resp.json()["created_count"] == 1
+    session = SessionLocal()
+    try:
+        assert session.query(Debtor).filter(Debtor.user_id == "test-id", Debtor.name == "Mixed Case Co").count() == 1
+    finally:
+        session.close()
+
+
+def test_preview_row_numbers_match_spreadsheet_despite_blank_lines():
+    due = (date.today() + timedelta(days=5)).isoformat()
+    content = (
+        "debtor_name,debtor_email,invoice_number,amount,due_date\n"
+        f"A,a@example.com,INV-ROW-{uuid.uuid4().hex[:6]},10,{due}\n"
+        "\n"
+        ",,,,\n"
+        f"B,b@example.com,INV-ROW2-{uuid.uuid4().hex[:6]},bad-amount,{due}\n"
+    )
+    resp = client.post("/invoice/import/preview", files=_csv_file(content))
+    data = resp.json()
+    assert [r["row_number"] for r in data["valid_rows"]] == [2]
+    assert [e["row_number"] for e in data["errors"]] == [5]

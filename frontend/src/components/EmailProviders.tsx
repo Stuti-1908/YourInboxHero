@@ -7,6 +7,7 @@ interface ProviderConfig {
   host: string;
   port: string;
   instructions: string[];
+  warning?: string;
 }
 
 const PROVIDERS: ProviderConfig[] = [
@@ -46,11 +47,12 @@ const PROVIDERS: ProviderConfig[] = [
       'Copy the generated password.',
       'Use your full Outlook email as the SMTP Username.',
       'Paste the app password as your SMTP Password below.'
-    ]
+    ],
+    warning: 'Microsoft is switching off password-based sending (SMTP AUTH) for Microsoft 365 work accounts, and many organisations already have it disabled. If connecting fails, your IT admin must enable SMTP AUTH for this mailbox — or leave this disconnected and reminders will go from our system address.'
   }
 ];
 
-export const EmailProviders = () => {
+export const EmailProviders = ({ embedded = false }: { embedded?: boolean }) => {
   const [selectedProvider, setSelectedProvider] = useState<ProviderConfig | null>(null);
   const [smtpUsername, setSmtpUsername] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
@@ -94,9 +96,10 @@ export const EmailProviders = () => {
         smtp_password: smtpPassword,
         smtp_from_email: smtpFromEmail || smtpUsername
       });
-      setMessage('Email provider connected successfully!');
+      setMessage('Connected — we signed in to your mailbox successfully. Reminders will now be sent from this address.');
       setIsConnected(true);
       setConnectedProvider(selectedProvider.name);
+      setSmtpPassword('');
     } catch (err: any) {
       setMessage(`Error: ${err.message}`);
     } finally {
@@ -129,8 +132,8 @@ export const EmailProviders = () => {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <h2 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-primary)' }}>Email Setup</h2>
+    <div style={embedded ? undefined : { padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      {embedded ? <h3>Email Sending</h3> : <h2 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-primary)' }}>Email Setup</h2>}
       <p style={{ color: 'var(--color-text-light)', marginBottom: '24px' }}>
         Connect your email provider so reminders are sent directly from your business email address.
       </p>
@@ -138,14 +141,16 @@ export const EmailProviders = () => {
       {/* Connection Status */}
       {isConnected && (
         <div style={{ 
-          padding: '16px 20px', 
-          background: '#f0fdf4', 
-          border: '1px solid #bbf7d0', 
-          borderRadius: '10px', 
+          padding: '16px 20px',
+          background: '#f0fdf4',
+          border: '1px solid #bbf7d0',
+          borderRadius: '10px',
           marginBottom: '24px',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'wrap'
         }}>
           <div>
             <strong style={{ color: '#166534' }}>Connected</strong>
@@ -172,7 +177,7 @@ export const EmailProviders = () => {
       )}
 
       {/* Provider Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
         {PROVIDERS.map((provider) => (
           <div
             key={provider.name}
@@ -211,6 +216,16 @@ export const EmailProviders = () => {
               ))}
             </ol>
           </div>
+
+          {selectedProvider.warning && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px', color: '#991b1b', fontSize: '0.85rem', lineHeight: 1.5 }}>
+              {selectedProvider.warning}
+            </div>
+          )}
+
+          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '16px' }}>
+            We sign in to your mailbox once to check these details before saving. Nothing is sent.
+          </p>
 
           <div style={{ display: 'grid', gap: '16px' }}>
             <div className="form-group">
@@ -257,7 +272,7 @@ export const EmailProviders = () => {
 
           <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
             <button className="btn-primary" onClick={handleConnect} disabled={saving}>
-              {saving ? 'Connecting...' : 'Connect Provider'}
+              {saving ? 'Checking sign-in...' : 'Connect Provider'}
             </button>
             <button 
               onClick={() => setSelectedProvider(null)}

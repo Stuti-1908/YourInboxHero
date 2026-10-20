@@ -25,3 +25,4 @@ tenacity
 psycopg2-binary
 sentry-sdk[fastapi]
 cryptography
+openpyxl==3.1.5

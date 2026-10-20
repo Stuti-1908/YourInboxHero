@@ -275,3 +275,46 @@ def test_voice_calls_skips_debtor_of_past_due_subscription():
         assert refreshed.last_reminder_sent is None
     finally:
         session.close()
+
+
+def test_sms_reminder_uses_sms_template_not_email_template(monkeypatch):
+    """Regression: the SMS sweep used to read the "overdue" EMAIL template
+    body as the text message. It must use the sms_overdue template, and
+    never the email body."""
+    from unittest.mock import patch
+    from src.models.email_template import EmailTemplate
+
+    session = SessionLocal()
+    try:
+        user = _make_user(session)
+        debtor = _make_debtor(session, phone="+15551234567", user_id=user.id)
+        _make_overdue_invoice(
+            session, debtor, escalation_tier="sms",
+            escalation_started_at=datetime.now(timezone.utc) - timedelta(days=5),
+        )
+        session.add(EmailTemplate(user_id=user.id, template_type="overdue",
+                                  subject="s", body="LONG EMAIL BODY SHOULD NOT BE TEXTED"))
+        session.add(EmailTemplate(user_id=user.id, template_type="sms_overdue",
+                                  subject="", body="SMS MARKER {{invoice_number}}"))
+        session.commit()
+        user_id = user.id
+    finally:
+        session.close()
+
+    sent = []
+
+    def fake_send_sms(phone, message, contact_name="", contact_email=""):
+        sent.append(message)
+        return True
+
+    session = SessionLocal()
+    try:
+        with patch("src.services.ghl_service.send_sms", side_effect=fake_send_sms):
+            run_sms_reminders(session)
+    finally:
+        session.close()
+
+    mine = [m for m in sent if "MARKER" in m or "LONG EMAIL BODY" in m]
+    assert mine, "expected an SMS for this user's invoice"
+    assert all(m.startswith("SMS MARKER INV-") for m in mine)
+    assert not any("LONG EMAIL BODY" in m for m in sent)

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { createInvoice, fetchDebtors } from '../api/invoice';
 import type { Debtor } from '../api/invoice';
 import './Forms.css';
@@ -14,9 +15,11 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [debtorsLoaded, setDebtorsLoaded] = useState(false);
+
   useEffect(() => {
     fetchDebtors()
-      .then(data => setDebtors(data))
+      .then(data => { setDebtors(data); setDebtorsLoaded(true); })
       .catch(() => setError('Failed to load debtors.'));
   }, []);
 
@@ -59,6 +62,11 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
         <h3>Add New Invoice</h3>
       </div>
       {error && <div className="error-message">{error}</div>}
+      {debtorsLoaded && debtors.length === 0 && (
+        <div className="error-message" style={{ background: 'var(--color-status-warning-bg)', color: 'var(--color-status-warning)' }}>
+          You don't have any debtors yet. <Link to="/dashboard/debtors?new=1">Add a debtor</Link> first, or use Import CSV / Excel to add debtors and invoices together.
+        </div>
+      )}
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Select Debtor</label>
@@ -80,7 +88,7 @@ export const CreateInvoice = ({ onSuccess }: { onSuccess: () => void }) => {
         </div>
         <div className="form-group">
           <label>Amount ($)</label>
-          <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="1500.00" />
+          <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="1500.00" />
         </div>
         <div className="form-group">
           <label>Due Date</label>

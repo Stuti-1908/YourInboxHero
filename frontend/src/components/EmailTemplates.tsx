@@ -34,37 +34,25 @@ const DEFAULT_SMS_TEMPLATES: Record<string, { subject: string; body: string }> =
   }
 };
 
-const Templates: React.FC = () => {
+const Templates: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const [medium, setMedium] = useState<'email' | 'sms'>('email');
   const [activeTab, setActiveTab] = useState<'upcoming' | 'due' | 'overdue'>('upcoming');
-  const [templates, setTemplates] = useState<{ [key: string]: EmailTemplate | null }>({
-    upcoming: null,
-    due: null,
-    overdue: null
-  });
+  // Saved templates keyed by backend template_type: email stages use the
+  // bare stage name, SMS stages are prefixed "sms_".
+  const [templates, setTemplates] = useState<Record<string, EmailTemplate>>({});
   const [formData, setFormData] = useState({ subject: '', body: '' });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   const getDefaults = () => medium === 'email' ? DEFAULT_EMAIL_TEMPLATES : DEFAULT_SMS_TEMPLATES;
+  const templateKey = medium === 'sms' ? `sms_${activeTab}` : activeTab;
 
   const loadTemplates = async () => {
     try {
       const data = await fetchEmailTemplates();
-      const newTemplates = { upcoming: null, due: null, overdue: null } as any;
-      data.forEach((t: EmailTemplate) => {
-        if (['upcoming', 'due', 'overdue'].includes(t.template_type)) {
-          newTemplates[t.template_type] = t;
-        }
-      });
-      setTemplates(newTemplates);
-
-      const activeTemplate = newTemplates[activeTab];
-      const defaults = getDefaults();
-      setFormData({
-        subject: activeTemplate ? activeTemplate.subject : defaults[activeTab].subject,
-        body: activeTemplate ? activeTemplate.body : defaults[activeTab].body
-      });
+      const byType: Record<string, EmailTemplate> = {};
+      data.forEach((t: EmailTemplate) => { byType[t.template_type] = t; });
+      setTemplates(byType);
     } catch (err) {
       console.error(err);
     }
@@ -72,18 +60,18 @@ const Templates: React.FC = () => {
 
   useEffect(() => {
     loadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const activeTemplate = templates[activeTab];
+    const saved = templates[templateKey];
     const defaults = getDefaults();
     setFormData({
-      subject: activeTemplate ? activeTemplate.subject : defaults[activeTab].subject,
-      body: activeTemplate ? activeTemplate.body : defaults[activeTab].body
+      subject: saved ? saved.subject : defaults[activeTab].subject,
+      body: saved ? saved.body : defaults[activeTab].body
     });
     setMessage('');
-  }, [activeTab, templates, medium]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateKey, templates]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +79,7 @@ const Templates: React.FC = () => {
     setMessage('');
     try {
       await saveEmailTemplate({
-        template_type: activeTab,
+        template_type: templateKey,
         subject: formData.subject,
         body: formData.body
       });
@@ -107,9 +95,9 @@ const Templates: React.FC = () => {
   const defaults = getDefaults();
 
   return (
-    <div className="email-templates-container" style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-      <h2 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-primary)' }}>Templates</h2>
-      <p style={{ color: 'var(--color-text-light)' }}>Customize the messages sent for each reminder stage.</p>
+    <div className="email-templates-container" style={embedded ? undefined : { padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      {embedded ? <h3>Reminder Templates</h3> : <h2 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-primary)' }}>Templates</h2>}
+      <p style={{ color: 'var(--color-text-light)' }}>Customize the messages sent for each reminder stage. Available on the Growth and Scale plans.</p>
       
       {/* Medium Toggle */}
       <div style={{ display: 'flex', gap: '0', marginBottom: '24px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--color-border)', width: 'fit-content' }}>
@@ -128,7 +116,7 @@ const Templates: React.FC = () => {
           Email
         </button>
         <button
-          onClick={() => setMedium('sms')}
+          onClick={() => { setMedium('sms'); setActiveTab('overdue'); }}
           style={{
             padding: '10px 24px',
             border: 'none',
@@ -144,9 +132,15 @@ const Templates: React.FC = () => {
         </button>
       </div>
 
+      {medium === 'sms' && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginTop: '-12px', marginBottom: '16px' }}>
+          Text messages are only sent once an invoice is overdue, so there is one SMS template.
+        </p>
+      )}
+
       {/* Stage Tabs */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        {(['upcoming', 'due', 'overdue'] as const).map(tab => (
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        {(medium === 'sms' ? (['overdue'] as const) : (['upcoming', 'due', 'overdue'] as const)).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -177,7 +171,7 @@ const Templates: React.FC = () => {
           )}
           <div className="form-group">
             <label className="form-label">{medium === 'email' ? 'Body' : 'Message'}</label>
-            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '8px' }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '8px', lineHeight: 1.9, overflowWrap: 'anywhere' }}>
               Available variables: <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{debtor_name}}`}</code>, <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{amount_due}}`}</code>, <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{invoice_number}}`}</code>, <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{due_date}}`}</code>, <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{company_name}}`}</code>, <code style={{ backgroundColor: 'var(--color-bg)', padding: '2px 4px', borderRadius: '4px' }}>{`{{payment_link}}`}</code>
             </div>
             <textarea
@@ -195,7 +189,7 @@ const Templates: React.FC = () => {
               </small>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Saving...' : 'Save Template'}
             </button>

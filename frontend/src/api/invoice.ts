@@ -417,7 +417,10 @@ export const updateSettings = async (settings: any): Promise<void> => {
     localStorage.removeItem('token');
     window.location.reload();
   }
-  if (!res.ok) throw new Error('Failed to update settings');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === 'string' ? err.detail : 'Failed to update settings');
+  }
 };
 
 // ============ Document Collection API ============
@@ -461,20 +464,6 @@ export const updateDocumentClient = async (id: string, data: { name?: string; ph
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to update document client');
-  }
-  return await res.json();
-};
-
-export const createDocumentClient = async (data: Omit<DocumentClient, 'id'>): Promise<DocumentClient> => {
-  const res = await fetch(`${API_BASE}/document-clients`, {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify(data)
-  });
-  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to create document client');
   }
   return await res.json();
 };
@@ -624,7 +613,7 @@ export const previewInvoiceImport = async (file: File): Promise<ImportPreviewRes
   if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to parse CSV file');
+    throw new Error(typeof err.detail === 'string' ? err.detail : 'Failed to read file');
   }
   return await res.json();
 };
@@ -656,3 +645,90 @@ export const createBillingPortalSession = async (): Promise<{ portal_url: string
   return await res.json();
 };
 
+
+// ============ Document batch request + CSV/Excel import ============
+
+export interface DocumentBatchResponse {
+  client_id: string;
+  client_name: string;
+  client_email: string;
+  requests: { id: string; title: string; due_date: string; status: string; upload_token: string }[];
+  email_sent: boolean;
+}
+
+export const createDocumentBatch = async (data: {
+  client_id?: string;
+  client?: { name: string; email: string; phone?: string; voice_call_consent: boolean };
+  titles: string[];
+  description?: string;
+  due_date: string;
+}): Promise<DocumentBatchResponse> => {
+  const res = await fetch(`${API_BASE}/documents/batch`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === 'string' ? err.detail : 'Failed to create document request');
+  }
+  return await res.json();
+};
+
+export interface DocImportRow {
+  row_number: number;
+  client_name: string;
+  client_email: string;
+  client_phone?: string | null;
+  document_title: string;
+  due_date: string;
+  description?: string | null;
+  client_exists: boolean;
+}
+
+export interface DocImportPreviewResponse {
+  valid_rows: DocImportRow[];
+  errors: ImportRowError[];
+  total_rows: number;
+}
+
+export interface DocImportCommitResponse {
+  results: { row_number: number; status: 'created' | 'skipped' | 'error'; detail: string }[];
+  created_count: number;
+  skipped_count: number;
+  error_count: number;
+  emails_sent: number;
+  emails_failed: number;
+}
+
+export const previewDocumentImport = async (file: File): Promise<DocImportPreviewResponse> => {
+  const token = localStorage.getItem('token');
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/documents/import/preview`, {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === 'string' ? err.detail : 'Failed to read file');
+  }
+  return await res.json();
+};
+
+export const commitDocumentImport = async (rows: DocImportRow[]): Promise<DocImportCommitResponse> => {
+  const res = await fetch(`${API_BASE}/documents/import/commit`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ rows }),
+  });
+  if (res.status === 401) { localStorage.removeItem('token'); window.location.reload(); }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(typeof err.detail === 'string' ? err.detail : 'Failed to import rows');
+  }
+  return await res.json();
+};

@@ -1,4 +1,4 @@
-"""CSV bulk import for debtors + invoices.
+"""CSV / Excel (.xlsx) bulk import for debtors + invoices.
 
 Two-step flow: the frontend uploads the CSV to /preview first, which
 parses and validates every row without writing anything to the DB and
@@ -15,13 +15,12 @@ Expected CSV columns (header row required, case-insensitive):
 One row per invoice; a debtor is matched by email (scoped to the current
 user) or created if no existing debtor has that email yet.
 """
-import csv
-import io
 from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.db import get_db
@@ -29,6 +28,7 @@ from src.auth import get_current_user
 from src.models.user import User
 from src.models.debtor import Debtor
 from src.models.invoice import Invoice, InvoiceStatus
+from src.services.tabular import read_table
 
 router = APIRouter()
 
@@ -80,39 +80,31 @@ class ImportCommitResponse(BaseModel):
     error_count: int
 
 
-def _parse_csv_rows(raw: bytes) -> tuple[List[dict], List[ImportRowError]]:
-    """Parse + structurally validate every row. Returns (parsed_dicts, errors).
-    A row with an error is excluded from parsed_dicts."""
-    try:
-        text = raw.decode("utf-8-sig")  # handles Excel's BOM-prefixed UTF-8 exports
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="CSV file must be UTF-8 encoded")
-
-    reader = csv.DictReader(io.StringIO(text))
-    if reader.fieldnames is None:
-        raise HTTPException(status_code=400, detail="CSV file is empty")
-
-    headers = {h.strip().lower() for h in reader.fieldnames}
+def _parse_csv_rows(raw: bytes, filename: str = "import.csv") -> tuple[List[dict], List[ImportRowError]]:
+    """Parse + structurally validate every row of a CSV or .xlsx upload.
+    Returns (parsed_dicts, errors). A row with an error is excluded from
+    parsed_dicts."""
+    headers_list, table_rows = read_table(raw, filename)
+    headers = set(headers_list)
     missing = REQUIRED_COLUMNS - headers
     if missing:
         raise HTTPException(
             status_code=400,
-            detail=f"CSV is missing required column(s): {', '.join(sorted(missing))}",
+            detail=f"File is missing required column(s): {', '.join(sorted(missing))}",
         )
 
     rows: List[dict] = []
     errors: List[ImportRowError] = []
     seen_invoice_numbers_in_file = set()
 
-    for i, raw_row in enumerate(reader, start=2):  # row 1 is the header
-        if i - 1 > MAX_ROWS:
+    for n, row in enumerate(table_rows, start=1):
+        i = row.pop("__row__")  # true spreadsheet row, header = row 1
+        if n > MAX_ROWS:
             errors.append(ImportRowError(row_number=i, error=f"Exceeds max {MAX_ROWS} rows per import — split into multiple files"))
             break
 
-        row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw_row.items()}
-
         name = row.get("debtor_name", "")
-        email = row.get("debtor_email", "")
+        email = row.get("debtor_email", "").lower()
         invoice_number = row.get("invoice_number", "")
         amount_raw = row.get("amount", "")
         due_date_raw = row.get("due_date", "")
@@ -169,7 +161,7 @@ async def preview_import(
 ):
     """Parse and validate a CSV without writing anything to the database."""
     raw = await file.read()
-    parsed_rows, errors = _parse_csv_rows(raw)
+    parsed_rows, errors = _parse_csv_rows(raw, file.filename or "import.csv")
 
     # Cross-reference existing invoice numbers and debtors for this user so
     # the preview can flag likely duplicates before commit.
@@ -179,7 +171,7 @@ async def preview_import(
         .all()
     }
     existing_debtor_emails = {
-        e for (e,) in db.query(Debtor.email).filter(Debtor.user_id == current_user.id).all()
+        (e or "").lower() for (e,) in db.query(Debtor.email).filter(Debtor.user_id == current_user.id).all()
     }
 
     valid_rows: List[ImportRow] = []
@@ -241,7 +233,7 @@ def commit_import(
             if debtor is None:
                 debtor = (
                     db.query(Debtor)
-                    .filter(Debtor.email == row.debtor_email, Debtor.user_id == current_user.id)
+                    .filter(func.lower(Debtor.email) == row.debtor_email.lower(), Debtor.user_id == current_user.id)
                     .first()
                 )
             if debtor is None:

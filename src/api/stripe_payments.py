@@ -150,8 +150,18 @@ async def stripe_webhook(request: Request):
             logger.info("stripe_webhook_duplicate_event_skipped", event_id=event_id, event_type=event_type)
             return {"msg": "Event already processed"}
 
-        if event_type == "checkout.session.completed":
+        if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
             session = event["data"]["object"]
+            # "completed" also fires for delayed payment methods (bank
+            # debits) before any money has moved -- payment_status is then
+            # "unpaid", and activating here would hand out a paid plan for
+            # free if the debit later fails. Those sessions activate on
+            # checkout.session.async_payment_succeeded instead.
+            payment_status = _stripe_get(session, "payment_status")
+            if payment_status not in ("paid", "no_payment_required"):
+                logger.warning("stripe_checkout_not_paid_yet", event_id=event_id, payment_status=payment_status)
+                db.commit()
+                return {"msg": f"Ignored — payment_status is {payment_status}"}
             metadata = _stripe_get(session, "metadata", {}) or {}
             plan = _stripe_get(metadata, "plan")
             email = _stripe_get(metadata, "email") or _stripe_get(session, "customer_email")

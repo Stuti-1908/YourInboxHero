@@ -239,6 +239,7 @@ def test_webhook_activates_subscription_on_verified_event(monkeypatch):
                 "customer": "cus_fake123",
                 "subscription": "sub_fake123",
                 "customer_email": username,
+                "payment_status": "paid",
                 "metadata": {"plan": "growth", "email": username},
             })
         },
@@ -587,3 +588,71 @@ def test_webhook_subscription_updated_ignores_unrecognized_price(monkeypatch):
         assert user.subscription_plan == "growth"  # unchanged
     finally:
         session.close()
+
+
+def _checkout_event(event_id, event_type, username, payment_status):
+    return {
+        "id": event_id,
+        "type": event_type,
+        "data": {
+            "object": StripeObjectLike({
+                "customer": f"cus_{event_id}",
+                "subscription": f"sub_{event_id}",
+                "customer_email": username,
+                "payment_status": payment_status,
+                "metadata": {"plan": "scale", "email": username},
+            })
+        },
+    }
+
+
+def _post_event(fake_event):
+    with patch("src.api.stripe_payments.stripe.Webhook.construct_event", return_value=fake_event):
+        return client.post("/api/payments/webhook", content=b"{}", headers={"stripe-signature": "valid-per-mock"})
+
+
+def _status_of(username):
+    session = SessionLocal()
+    try:
+        u = session.query(User).filter(User.username == username).first()
+        return u.subscription_status, u.subscription_plan
+    finally:
+        session.close()
+
+
+def test_webhook_does_not_activate_unpaid_checkout(monkeypatch):
+    """A delayed-payment checkout completes with payment_status=unpaid
+    before any money moves; activating then would give the plan away free
+    if the debit later fails."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    username = _make_user()
+
+    resp = _post_event(_checkout_event("evt_unpaid1", "checkout.session.completed", username, "unpaid"))
+    assert resp.status_code == 200
+    assert "unpaid" in resp.json()["msg"]
+    status, plan = _status_of(username)
+    assert status != "active"
+    assert plan != "scale"
+
+
+def test_webhook_activates_on_async_payment_succeeded(monkeypatch):
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    username = _make_user()
+
+    _post_event(_checkout_event("evt_async1", "checkout.session.completed", username, "unpaid"))
+    assert _status_of(username)[0] != "active"
+
+    resp = _post_event(_checkout_event("evt_async2", "checkout.session.async_payment_succeeded", username, "paid"))
+    assert resp.status_code == 200
+    assert _status_of(username) == ("active", "scale")
+
+
+def test_webhook_activates_free_trial_checkout(monkeypatch):
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    username = _make_user()
+
+    _post_event(_checkout_event("evt_trial1", "checkout.session.completed", username, "no_payment_required"))
+    assert _status_of(username) == ("active", "scale")

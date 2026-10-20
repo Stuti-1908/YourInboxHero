@@ -228,3 +228,81 @@ def test_document_sms_reminders_skips_client_without_phone():
         assert refreshed.sms_sent_count == 0
     finally:
         session.close()
+
+
+def _make_titled_request(session, client, title, tier):
+    req = _make_overdue_request(
+        session, client, escalation_tier=tier,
+        escalation_started_at=datetime.now(timezone.utc) - timedelta(days=10),
+    )
+    req.title = title
+    session.flush()
+    return req
+
+
+def test_document_sms_groups_all_overdue_documents_for_a_client_into_one_text():
+    from unittest.mock import patch
+    session = SessionLocal()
+    try:
+        user = _make_user(session)
+        client = _make_client(session, phone="+15551234567", user_id=user.id)
+        ids = [_make_titled_request(session, client, t, "sms").id for t in ("W-9", "Lease", "ID")]
+        session.commit()
+        user_id = user.id
+    finally:
+        session.close()
+
+    with patch('src.services.ghl_service.send_sms', return_value=True) as mock_sms:
+        session = SessionLocal()
+        try:
+            run_document_sms_reminders(session)
+        finally:
+            session.close()
+
+    sent_to_this_client = [c for c in mock_sms.call_args_list if c.kwargs['contact_email'].endswith('@example.com')
+                           and all(t in c.kwargs['message'] for t in ("W-9", "Lease", "ID"))]
+    assert len(sent_to_this_client) == 1
+    assert "3 documents" in sent_to_this_client[0].kwargs['message']
+
+    session = SessionLocal()
+    try:
+        reqs = session.query(DocumentRequest).filter(DocumentRequest.id.in_(ids)).all()
+        assert all(r.sms_sent_count == 1 and r.last_reminder_sent is not None for r in reqs)
+        assert session.query(User).get(user_id).chases_used == 1  # one text = one chase
+    finally:
+        session.close()
+
+
+def test_document_voice_groups_all_overdue_documents_for_a_client_into_one_call():
+    from unittest.mock import patch
+    session = SessionLocal()
+    try:
+        user = _make_user(session)
+        client = _make_client(session, phone="+15559876543", voice_call_consent=True, user_id=user.id)
+        ids = [_make_titled_request(session, client, t, "voice").id for t in ("Passport", "Payslip")]
+        session.commit()
+        user_id = user.id
+        client_email = client.email
+    finally:
+        session.close()
+
+    with patch('src.services.ghl_service.trigger_voice_call', return_value=True) as mock_call, \
+         patch('src.services.call_window.is_within_calling_window', return_value=True):
+        session = SessionLocal()
+        try:
+            run_document_voice_calls(session)
+        finally:
+            session.close()
+
+    calls = [c for c in mock_call.call_args_list if c.kwargs['contact_email'] == client_email]
+    assert len(calls) == 1
+    assert 'Passport' in calls[0].kwargs['message'] and 'Payslip' in calls[0].kwargs['message']
+    assert calls[0].kwargs['item_description'] == 'Passport and Payslip'
+
+    session = SessionLocal()
+    try:
+        reqs = session.query(DocumentRequest).filter(DocumentRequest.id.in_(ids)).all()
+        assert all(r.voice_call_count == 1 for r in reqs)
+        assert session.query(User).get(user_id).chases_used == 1
+    finally:
+        session.close()

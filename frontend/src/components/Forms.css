@@ -115,3 +115,32 @@
   font-size: 0.9rem;
   margin-bottom: 24px;
 }
+
+@media (max-width: 640px) {
+  .form-card {
+    padding: 20px 16px;
+  }
+
+  .form-header {
+    margin-bottom: 20px;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  .form-actions {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .form-actions > button {
+    flex: 1 1 auto;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    padding: 12px 16px;
+  }
+}

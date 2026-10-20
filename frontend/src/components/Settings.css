@@ -38,3 +38,24 @@
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 10px;
 }
+
+.settings-card .form-container {
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .settings-container {
+    padding: 0;
+  }
+
+  .settings-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .settings-card {
+    padding: 18px 16px;
+    margin-bottom: 18px;
+  }
+}

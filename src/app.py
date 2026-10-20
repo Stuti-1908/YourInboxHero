@@ -274,7 +274,9 @@ app.include_router(email_template_router, prefix="", dependencies=[Depends(requi
 
 from src.api.document_request import router as document_request_router
 from src.api.document_client import router as document_client_router
+from src.api.document_import import router as document_import_router
 # Public: upload endpoint (debtors use their token), protected CRUD routes
+app.include_router(document_import_router, prefix="", tags=["documents"])
 app.include_router(document_request_router, prefix="", tags=["documents"])
 app.include_router(document_client_router, prefix="", tags=["document_clients"])
 
@@ -310,6 +312,7 @@ api_v1.include_router(analytics_router, prefix="", dependencies=[Depends(require
 api_v1.include_router(invoice_pdf_router, prefix="", dependencies=[Depends(require_active_subscription)])
 api_v1.include_router(email_template_router, prefix="", dependencies=[Depends(require_active_subscription)])
 
+api_v1.include_router(document_import_router, prefix="", tags=["documents"])
 api_v1.include_router(document_request_router, prefix="", tags=["documents"])
 api_v1.include_router(document_client_router, prefix="", tags=["document_clients"])
 

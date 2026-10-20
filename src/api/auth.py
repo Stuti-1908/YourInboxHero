@@ -25,6 +25,7 @@ from src.auth import (
 from src.rate_limit import limiter
 from src.services.account_notifications import send_verification_email
 from src.services.secrets import encrypt_secret
+from src.services.email import ALLOWED_SMTP_HOSTS, ALLOWED_SMTP_PORTS, verify_smtp_credentials
 import structlog
 from pydantic import BaseModel
 
@@ -249,6 +250,10 @@ from src.auth import get_current_user
 
 _VALID_DAY_CODES = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 
+# Matches the providers offered in EmailProviders.tsx. An open host field
+# would let any customer make our server connect to arbitrary hosts.
+ALLOWED_SMTP_PORTS_STR = {str(p) for p in ALLOWED_SMTP_PORTS}
+
 
 class UserSettingsUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -314,6 +319,28 @@ def update_me(
         user.company_name = settings.company_name
     if settings.logo_base64 is not None:
         user.logo_base64 = settings.logo_base64
+
+    if settings.smtp_host:
+        if settings.smtp_host not in ALLOWED_SMTP_HOSTS:
+            raise HTTPException(status_code=422, detail="Unsupported email provider.")
+        if settings.smtp_port and settings.smtp_port not in ALLOWED_SMTP_PORTS_STR:
+            raise HTTPException(status_code=422, detail="Unsupported SMTP port.")
+    if settings.smtp_password:
+        # Connecting a provider: prove the credentials work before saving,
+        # otherwise every reminder silently falls back to our own sender
+        # while the customer believes mail goes out from their mailbox.
+        host = settings.smtp_host or user.smtp_host
+        port = settings.smtp_port or user.smtp_port
+        username = settings.smtp_username or user.smtp_username
+        if not (host and port and username):
+            raise HTTPException(status_code=422, detail="SMTP host, port and username are required.")
+        if host not in ALLOWED_SMTP_HOSTS or str(port) not in ALLOWED_SMTP_PORTS_STR:
+            raise HTTPException(status_code=422, detail="Unsupported email provider.")
+        try:
+            verify_smtp_credentials(host, int(port), username, settings.smtp_password)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     if settings.smtp_host is not None:
         user.smtp_host = settings.smtp_host
     if settings.smtp_port is not None:

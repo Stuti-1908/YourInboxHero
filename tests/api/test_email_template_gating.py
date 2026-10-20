@@ -54,6 +54,46 @@ def test_save_template_allowed_on_scale():
     assert resp.status_code == 200
 
 
+def test_sms_template_does_not_overwrite_email_template():
+    """Regression: SMS and email templates used to share the key
+    "overdue", so saving one silently replaced the other."""
+    app.dependency_overrides[get_current_user] = _override_user("scale")
+    r1 = client.put("/email-template", json={
+        "template_type": "overdue", "subject": "Email subj", "body": "EMAIL BODY MARKER",
+    })
+    r2 = client.put("/email-template", json={
+        "template_type": "sms_overdue", "subject": "", "body": "SMS BODY MARKER",
+    })
+    assert r1.status_code == 200 and r2.status_code == 200
+    by_type = {t["template_type"]: t for t in client.get("/email-template").json()}
+    assert by_type["overdue"]["body"] == "EMAIL BODY MARKER"
+    assert by_type["sms_overdue"]["body"] == "SMS BODY MARKER"
+
+
+def test_unknown_template_type_rejected():
+    app.dependency_overrides[get_current_user] = _override_user("scale")
+    resp = client.put("/email-template", json={
+        "template_type": "whatever", "subject": "x", "body": "y",
+    })
+    assert resp.status_code == 422
+
+
+def test_sms_template_length_limit():
+    app.dependency_overrides[get_current_user] = _override_user("scale")
+    resp = client.put("/email-template", json={
+        "template_type": "sms_overdue", "subject": "", "body": "x" * 321,
+    })
+    assert resp.status_code == 422
+
+
+def test_email_template_requires_subject():
+    app.dependency_overrides[get_current_user] = _override_user("scale")
+    resp = client.put("/email-template", json={
+        "template_type": "due", "subject": "  ", "body": "body",
+    })
+    assert resp.status_code == 422
+
+
 def test_list_templates_still_allowed_on_starter():
     """Viewing (GET) is never gated -- only saving/editing is."""
     app.dependency_overrides[get_current_user] = _override_user("starter")

@@ -230,3 +230,23 @@ def test_render_template_omits_payment_button_when_no_link():
     html = render_template(invoice)
 
     assert 'Pay $1000.50 Now' not in html
+
+
+def test_custom_template_escapes_html_in_body_and_values(monkeypatch):
+    monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
+    invoice = _make_dummy_invoice(plan='scale')
+    invoice.debtor.name = '<img src=x onerror=alert(1)>'
+
+    class Tmpl:
+        subject = 'Invoice {{invoice_number}}'
+        body = 'Hi {{debtor_name}},\n<b>pay</b> now'
+
+    with patch('src.services.email.SessionLocal') as mock_session_local, \
+         patch('src.services.email._send_via_resend', return_value={"method": "resend"}) as mock_resend:
+        mock_session_local.return_value.query.return_value.filter.return_value.first.return_value = Tmpl()
+        send_reminder_email(invoice)
+
+    html_body = mock_resend.call_args.kwargs['html_body']
+    assert '<img' not in html_body and '<b>' not in html_body
+    assert '&lt;img src=x onerror=alert(1)&gt;' in html_body
+    assert '<br>' in html_body  # newlines still become line breaks

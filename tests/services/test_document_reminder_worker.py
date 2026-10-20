@@ -160,3 +160,45 @@ def test_handle_document_reminder_blocked_at_chase_limit():
             session.commit()
         finally:
             session.close()
+
+
+def test_process_due_document_reminders_sends_one_email_per_client():
+    from src.models.user import User
+    session = SessionLocal()
+    try:
+        user = User(id=str(uuid.uuid4()), username=f"{uuid.uuid4().hex[:8]}@example.com",
+                    hashed_password="x", subscription_plan="scale", subscription_status="active",
+                    chases_limit=750, chases_used=0)
+        session.add(user)
+        session.flush()
+        c = DocumentClient(user_id=user.id, id=str(uuid.uuid4()), name="Grouped",
+                           email=f"{uuid.uuid4().hex[:8]}@example.com")
+        session.add(c)
+        session.flush()
+        ids = []
+        for title in ("A", "B", "C"):
+            r = DocumentRequest(id=str(uuid.uuid4()), user_id=user.id, client_id=c.id, title=title,
+                                due_date=date.today() + timedelta(days=2), status="pending")
+            session.add(r)
+            ids.append(r.id)
+        session.commit()
+        user_id = user.id
+    finally:
+        session.close()
+
+    batches = []
+    with patch('src.services.document_reminder_worker.send_document_request_email',
+               side_effect=lambda docs: batches.append({d.id for d in docs})), \
+         patch('src.feature_flags.reminders_enabled', return_value=True):
+        from src.services.document_reminder_service import process_due_document_reminders
+        process_due_document_reminders()
+
+    assert [b for b in batches if b & set(ids)] == [set(ids)]
+
+    session = SessionLocal()
+    try:
+        assert session.query(User).get(user_id).chases_used == 1
+        assert all(r.last_reminder_sent is not None
+                   for r in session.query(DocumentRequest).filter(DocumentRequest.id.in_(ids)))
+    finally:
+        session.close()

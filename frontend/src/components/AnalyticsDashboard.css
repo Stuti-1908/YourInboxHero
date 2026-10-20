@@ -20,7 +20,7 @@
 
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
   gap: 1.5rem;
 }
 
@@ -56,7 +56,7 @@
 
 .charts-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(350px, 100%), 1fr));
   gap: 1.5rem;
 }
 
@@ -192,4 +192,10 @@
 
 @keyframes fadeIn {
   to { opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .analytics-dashboard {
+    padding: 0;
+  }
 }

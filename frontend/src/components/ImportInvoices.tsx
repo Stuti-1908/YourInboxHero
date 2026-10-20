@@ -20,7 +20,7 @@ export const ImportInvoices = ({ onSuccess }: { onSuccess: () => void }) => {
       const data = await previewInvoiceImport(file);
       setPreview(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to parse CSV file');
+      setError(err.message || 'Failed to read file');
       setPreview(null);
     } finally {
       setLoading(false);
@@ -53,18 +53,18 @@ export const ImportInvoices = ({ onSuccess }: { onSuccess: () => void }) => {
   return (
     <div className="form-card fade-in">
       <div className="form-header">
-        <h3>Import Debtors &amp; Invoices from CSV</h3>
+        <h3>Import debtors &amp; invoices</h3>
       </div>
 
       {!preview && !result && (
         <>
           <p style={{ color: 'var(--color-text-light)', marginBottom: '16px' }}>
-            Upload a CSV file with one row per invoice. Required columns: <code>debtor_name</code>, <code>debtor_email</code>,{' '}
+            Upload a CSV or Excel (.xlsx) file with one row per invoice. Debtors are matched by email, or created if new. Required columns: <code>debtor_name</code>, <code>debtor_email</code>,{' '}
             <code>invoice_number</code>, <code>amount</code>, <code>due_date</code> (YYYY-MM-DD). Optional: <code>debtor_phone</code>,{' '}
             <code>description</code>.
           </p>
           <div className="form-group">
-            <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileChange} disabled={loading} />
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx" onChange={handleFileChange} disabled={loading} />
           </div>
           {error && <div className="error-message">{error}</div>}
           {loading && <p>Parsing file...</p>}

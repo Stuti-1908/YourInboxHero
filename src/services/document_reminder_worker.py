@@ -8,6 +8,7 @@ email/SMS/voice sends despite the History page implying one exists.
 """
 import logging
 from datetime import datetime, timezone
+from typing import List
 
 from src.db import get_session
 from src.models.document_request import DocumentRequest
@@ -24,23 +25,37 @@ class ChaseLimitReached(Exception):
 
 
 def handle_document_reminder(doc_request_id: str) -> None:
-    """Send a reminder for a single document request.
+    """Send a reminder for a single document request. Thin wrapper over
+    handle_document_reminder_group, kept for callers that work per request."""
+    handle_document_reminder_group([doc_request_id])
 
-    Args:
-        doc_request_id: The document request primary key (string UUID).
+
+def handle_document_reminder_group(doc_request_ids: List[str]) -> None:
+    """Send ONE reminder email covering every given document request.
+    All requests must belong to the same client; the caller
+    (process_due_document_reminders) groups them that way.
+
+    One email counts as one chase against the plan allowance, and every
+    request in it gets its own ReminderLog row and last_reminder_sent
+    stamp so the History page and same-day dedupe stay per-document.
 
     Raises:
-        ValueError: If the document request is not found.
+        ValueError: If any document request is not found.
         ChaseLimitReached: If the owning user has no chases left this
-            cycle. The request is left untouched -- no usage increment --
-            so a retry next cycle behaves as if this attempt never happened.
+            cycle. Nothing is touched -- no usage increment -- so a retry
+            next cycle behaves as if this attempt never happened.
     """
     with get_session() as sess:
-        doc = sess.query(DocumentRequest).filter(DocumentRequest.id == doc_request_id).first()
-        if not doc:
-            raise ValueError(f'Document request {doc_request_id} not found')
+        docs = sess.query(DocumentRequest).filter(DocumentRequest.id.in_(doc_request_ids)).all()
+        found = {d.id for d in docs}
+        missing = [i for i in doc_request_ids if i not in found]
+        if missing:
+            raise ValueError(f'Document request(s) {missing} not found')
+        if len({d.client_id for d in docs}) != 1:
+            raise ValueError('Grouped document reminders must all belong to one client')
+        docs.sort(key=lambda d: (d.due_date, d.title))
 
-        user = doc.client.user
+        user = docs[0].client.user
         if not can_send_chase(user):
             raise ChaseLimitReached(
                 f'User {user.id} cannot receive a chase right now '
@@ -48,31 +63,33 @@ def handle_document_reminder(doc_request_id: str) -> None:
                 f'chases_used={user.chases_used}/{user.chases_limit})'
             )
 
+        now = datetime.now(timezone.utc)
         try:
-            send_document_request_email(doc)
-            status = ReminderStatus.sent
+            send_document_request_email(docs)
         except Exception as exc:
-            logging.error(f'Failed to send reminder for document request {doc_request_id}: {exc}')
-            sess.add(ReminderLog(
-                document_request_id=doc_request_id,
-                sent_at=datetime.now(timezone.utc),
-                channel=Channel.email,
-                payload={'title': doc.title, 'client_email': doc.client.email},
-                status=ReminderStatus.failed,
-            ))
+            logging.error(f'Failed to send reminder for document request(s) {doc_request_ids}: {exc}')
+            for doc in docs:
+                sess.add(ReminderLog(
+                    document_request_id=doc.id,
+                    sent_at=now,
+                    channel=Channel.email,
+                    payload={'title': doc.title, 'client_email': doc.client.email},
+                    status=ReminderStatus.failed,
+                ))
             sess.commit()
-            # Re-raise so the caller's per-request try/except in
+            # Re-raise so the caller's per-group try/except in
             # process_due_document_reminders counts it as failed rather
             # than silently treating it as sent.
             raise
 
-        sess.add(ReminderLog(
-            document_request_id=doc_request_id,
-            sent_at=datetime.now(timezone.utc),
-            channel=Channel.email,
-            payload={'title': doc.title, 'client_email': doc.client.email},
-            status=status,
-        ))
-        doc.last_reminder_sent = datetime.now(timezone.utc)
-        record_chase_used(user, sess, channel='email', invoice_id=doc_request_id)
+        for doc in docs:
+            sess.add(ReminderLog(
+                document_request_id=doc.id,
+                sent_at=now,
+                channel=Channel.email,
+                payload={'title': doc.title, 'client_email': doc.client.email},
+                status=ReminderStatus.sent,
+            ))
+            doc.last_reminder_sent = now
+        record_chase_used(user, sess, channel='email', invoice_id=docs[0].id)
         sess.commit()

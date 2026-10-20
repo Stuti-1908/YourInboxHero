@@ -1,19 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { InvoiceTable } from './components/InvoiceTable';
-import { DebtorTable } from './components/DebtorTable';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { Settings } from './components/Settings';
 import { LandingPage } from './components/LandingPage';
-import { CreateDebtor } from './components/CreateDebtor';
-import { CreateInvoice } from './components/CreateInvoice';
-import { ImportInvoices } from './components/ImportInvoices';
-import Templates from './components/EmailTemplates';
-import { EmailProviders } from './components/EmailProviders';
-import { DocumentTable } from './components/DocumentTable';
-import { CreateDocumentRequest } from './components/CreateDocumentRequest';
-import { CreateDocumentClient } from './components/CreateDocumentClient';
+import { InvoicesPage } from './components/InvoicesPage';
+import { DebtorsPage } from './components/DebtorsPage';
+import { DocumentsPage } from './components/DocumentsPage';
 import { PaymentSuccess } from './components/PaymentSuccess';
 import { PublicDocumentUpload } from './components/PublicDocumentUpload';
 import { VerifyEmail } from './components/VerifyEmail';
@@ -25,6 +18,19 @@ import './App.css';
 
 const isLoggedIn = () => !!localStorage.getItem('token');
 
+const MONEY_TABS = [
+  { path: '/dashboard/analytics', label: 'Analytics' },
+  { path: '/dashboard/invoices', label: 'Invoices' },
+  { path: '/dashboard/debtors', label: 'Debtors' },
+  { path: '/dashboard/history', label: 'History' },
+  { path: '/dashboard/settings', label: 'Settings' },
+];
+
+const DOC_TABS = [
+  { path: '/documents', label: 'Documents' },
+  { path: '/documents/settings', label: 'Settings' },
+];
+
 // Dashboard chrome (module switcher + nav tabs) shared by every authenticated
 // route, with each tab as a real URL under /dashboard or /documents instead
 // of in-memory state, so the back/forward buttons and bookmarks work.
@@ -32,13 +38,12 @@ const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const companyName = getCompanyName();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Silently slide the 30-minute token expiry forward every 10 minutes
-  // while the dashboard is open (M8), so an actively-working user isn't
-  // logged out mid-session. If the token has already expired (e.g. the
-  // laptop was asleep past the 30-minute window), refreshToken() fails
-  // harmlessly and the next real API call's existing 401 handling
-  // (localStorage.removeItem('token') + reload) takes over as before.
+  // while the dashboard is open, so an actively-working user isn't logged
+  // out mid-session. If the token has already expired, refreshToken()
+  // fails harmlessly and the next real API call's 401 handling takes over.
   useEffect(() => {
     const interval = setInterval(() => {
       refreshToken();
@@ -46,48 +51,20 @@ const DashboardLayout = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   const activeModule = location.pathname.startsWith('/documents') ? 'documents' : 'money';
-  const isMoneyTab = (tab: string) => location.pathname === `/dashboard/${tab}`;
-  const isDocTab = (tab: string) => location.pathname === `/documents/${tab}` || (tab === 'list' && location.pathname === '/documents');
+  const tabs = activeModule === 'money' ? MONEY_TABS : DOC_TABS;
 
   return (
     <div className="app-container fade-in">
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '0',
-        background: 'var(--color-bg-alt)',
-        borderBottom: '1px solid var(--color-border)',
-        padding: '0'
-      }}>
-        <button
-          onClick={() => navigate('/dashboard')}
-          style={{
-            padding: '12px 32px',
-            border: 'none',
-            borderBottom: activeModule === 'money' ? '3px solid var(--color-primary)' : '3px solid transparent',
-            background: 'transparent',
-            fontWeight: activeModule === 'money' ? 700 : 400,
-            fontSize: '0.95rem',
-            cursor: 'pointer',
-            color: activeModule === 'money' ? 'var(--color-primary)' : 'var(--color-text-light)'
-          }}
-        >
+      <div className="module-switch">
+        <button className={activeModule === 'money' ? 'active' : ''} onClick={() => navigate('/dashboard')}>
           Money Collection
         </button>
-        <button
-          onClick={() => navigate('/documents')}
-          style={{
-            padding: '12px 32px',
-            border: 'none',
-            borderBottom: activeModule === 'documents' ? '3px solid var(--color-primary)' : '3px solid transparent',
-            background: 'transparent',
-            fontWeight: activeModule === 'documents' ? 700 : 400,
-            fontSize: '0.95rem',
-            cursor: 'pointer',
-            color: activeModule === 'documents' ? 'var(--color-primary)' : 'var(--color-text-light)'
-          }}
-        >
+        <button className={activeModule === 'documents' ? 'active' : ''} onClick={() => navigate('/documents')}>
           Document Collection
         </button>
       </div>
@@ -96,30 +73,26 @@ const DashboardLayout = () => {
         <div className="nav-brand">
           <h1>{companyName === 'YourInboxHero' ? <>YourInbox<span>Hero</span></> : <span>{companyName}</span>}</h1>
         </div>
-        <div className="nav-controls">
-          {activeModule === 'money' ? (
-            <>
-              <button className={`nav-tab ${isMoneyTab('analytics') ? 'active' : ''}`} onClick={() => navigate('/dashboard/analytics')}>Analytics</button>
-              <button className={`nav-tab ${isMoneyTab('invoices') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices')}>Invoices</button>
-              <button className={`nav-tab ${isMoneyTab('history') ? 'active' : ''}`} onClick={() => navigate('/dashboard/history')}>History</button>
-              <button className={`nav-tab ${isMoneyTab('debtors') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors')}>Debtors</button>
-              <button className={`nav-tab ${isMoneyTab('debtors/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/debtors/new')}>Add Debtor</button>
-              <button className={`nav-tab ${isMoneyTab('invoices/new') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices/new')}>Add Invoice</button>
-              <button className={`nav-tab ${isMoneyTab('invoices/import') ? 'active' : ''}`} onClick={() => navigate('/dashboard/invoices/import')}>Import CSV</button>
-              <button className={`nav-tab ${isMoneyTab('templates') ? 'active' : ''}`} onClick={() => navigate('/dashboard/templates')}>Templates</button>
-              <button className={`nav-tab ${isMoneyTab('email-setup') ? 'active' : ''}`} onClick={() => navigate('/dashboard/email-setup')}>Email Setup</button>
-              <button className={`nav-tab ${isMoneyTab('settings') ? 'active' : ''}`} onClick={() => navigate('/dashboard/settings')}>Settings</button>
-            </>
-          ) : (
-            <>
-              <button className={`nav-tab ${isDocTab('list') ? 'active' : ''}`} onClick={() => navigate('/documents')}>Documents</button>
-              <button className={`nav-tab ${isDocTab('new') ? 'active' : ''}`} onClick={() => navigate('/documents/new')}>Request Document</button>
-              <button className={`nav-tab ${isDocTab('clients/new') ? 'active' : ''}`} onClick={() => navigate('/documents/clients/new')}>Add Client</button>
-              <button className="nav-tab" onClick={() => navigate('/dashboard/settings')}>Settings</button>
-            </>
-          )}
+        <button
+          className="nav-toggle"
+          aria-expanded={menuOpen}
+          aria-label="Toggle navigation menu"
+          onClick={() => setMenuOpen(o => !o)}
+        >
+          {menuOpen ? 'Close' : 'Menu'}
+        </button>
+        <nav className={`nav-controls ${menuOpen ? 'open' : ''}`}>
+          {tabs.map(t => (
+            <button
+              key={t.path}
+              className={`nav-tab ${location.pathname === t.path ? 'active' : ''}`}
+              onClick={() => navigate(t.path)}
+            >
+              {t.label}
+            </button>
+          ))}
           <button className="nav-logout" onClick={() => { logout().finally(() => navigate('/')); }}>Sign Out</button>
-        </div>
+        </nav>
       </header>
 
       <main className="main-content">
@@ -127,18 +100,22 @@ const DashboardLayout = () => {
           <Routes>
             <Route path="/dashboard" element={<Navigate to="/dashboard/analytics" replace />} />
             <Route path="/dashboard/analytics" element={<AnalyticsDashboard />} />
-            <Route path="/dashboard/invoices" element={<InvoiceTable />} />
+            <Route path="/dashboard/invoices" element={<InvoicesPage />} />
+            <Route path="/dashboard/debtors" element={<DebtorsPage />} />
             <Route path="/dashboard/history" element={<ReminderHistory />} />
-            <Route path="/dashboard/debtors" element={<DebtorTable />} />
-            <Route path="/dashboard/debtors/new" element={<CreateDebtor onSuccess={() => navigate('/dashboard/debtors')} />} />
-            <Route path="/dashboard/invoices/new" element={<CreateInvoice onSuccess={() => navigate('/dashboard/invoices')} />} />
-            <Route path="/dashboard/invoices/import" element={<ImportInvoices onSuccess={() => navigate('/dashboard/invoices')} />} />
-            <Route path="/dashboard/templates" element={<Templates />} />
-            <Route path="/dashboard/email-setup" element={<EmailProviders />} />
             <Route path="/dashboard/settings" element={<Settings />} />
-            <Route path="/documents" element={<DocumentTable />} />
-            <Route path="/documents/new" element={<CreateDocumentRequest onSuccess={() => navigate('/documents')} />} />
-            <Route path="/documents/clients/new" element={<CreateDocumentClient onSuccess={() => navigate('/documents/new')} />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/documents/settings" element={<Settings />} />
+
+            {/* Old URLs (bookmarks, emails, earlier builds) */}
+            <Route path="/dashboard/debtors/new" element={<Navigate to="/dashboard/debtors?new=1" replace />} />
+            <Route path="/dashboard/invoices/new" element={<Navigate to="/dashboard/invoices?new=1" replace />} />
+            <Route path="/dashboard/invoices/import" element={<Navigate to="/dashboard/invoices?import=1" replace />} />
+            <Route path="/dashboard/templates" element={<Navigate to="/dashboard/settings#templates" replace />} />
+            <Route path="/dashboard/email-setup" element={<Navigate to="/dashboard/settings#email" replace />} />
+            <Route path="/documents/new" element={<Navigate to="/documents?new=1" replace />} />
+            <Route path="/documents/clients/new" element={<Navigate to="/documents?new=1" replace />} />
+
             <Route path="*" element={<Navigate to="/dashboard/analytics" replace />} />
           </Routes>
         </div>

@@ -45,11 +45,11 @@ def get_eligible_document_requests(db: Session, lookahead_days: int = 14):
 
 
 def process_due_document_reminders():
-    """Fetch eligible document requests and send each reminder
-    synchronously. Mirrors reminder_service.process_due_reminders.
+    """Fetch eligible document requests and send one reminder email per
+    client covering all of that client's eligible requests.
 
-    Each request is sent and logged independently, so one request's send
-    failure never blocks the rest of the batch.
+    Each client is sent and logged independently, so one send failure
+    never blocks the rest of the batch.
 
     Aborts early if the 'reminders-enabled' feature flag is off (shared
     with invoice reminders).
@@ -66,25 +66,29 @@ def process_due_document_reminders():
         if not requests:
             logging.info('No eligible document requests found')
             return
-        request_ids = [str(r.id) for r in requests]
+        # One email per client per day, listing every document they owe,
+        # instead of one email per document.
+        groups = {}
+        for r in requests:
+            groups.setdefault(str(r.client_id), []).append(str(r.id))
 
-    from src.services.document_reminder_worker import handle_document_reminder, ChaseLimitReached
+    from src.services.document_reminder_worker import handle_document_reminder_group, ChaseLimitReached
 
     sent = 0
     failed = 0
     limit_reached = 0
-    for request_id in request_ids:
+    for client_id, request_ids in groups.items():
         try:
-            handle_document_reminder(request_id)
+            handle_document_reminder_group(request_ids)
             sent += 1
         except ChaseLimitReached as exc:
             limit_reached += 1
-            logging.warning(f'Chase limit reached, skipping document request {request_id}: {exc}')
+            logging.warning(f'Chase limit reached, skipping document reminders for client {client_id}: {exc}')
         except Exception as exc:
             failed += 1
-            logging.error(f'Reminder failed for document request {request_id}: {exc}')
+            logging.error(f'Reminder failed for document client {client_id}: {exc}')
 
     logging.info(
-        f'Processed {len(request_ids)} document reminder(s): {sent} sent, {failed} failed, '
+        f'Processed document reminders for {len(groups)} client(s): {sent} sent, {failed} failed, '
         f'{limit_reached} skipped (chase limit reached)'
     )

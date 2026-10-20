@@ -1,12 +1,13 @@
 """Email service with retry logic and structured logging."""
 import base64
+import html
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Dict, Optional
 
 import requests
 import structlog
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.config.settings import get_settings
@@ -55,7 +56,7 @@ def render_template(invoice: Any, pdf_attached: bool = False) -> str:
     which also makes it straightforward to unit-test with plain fixtures
     rather than full ORM instances.
     """
-    env = Environment(loader=FileSystemLoader('templates'))
+    env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html']))
     tmpl = env.get_template('reminder_email.html')
 
     status_value = invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status)
@@ -97,10 +98,68 @@ def _apply_replacements(text: str, replacements: Dict[str, str]) -> str:
     return text
 
 
+# Customers pick one of these providers in the UI. Enforced on save AND at
+# connect time, so a host saved before the allowlist existed (or written
+# directly to the DB) can't be used to make the server connect elsewhere.
+ALLOWED_SMTP_HOSTS = {"smtp.gmail.com", "smtp.mail.yahoo.com", "smtp.office365.com"}
+ALLOWED_SMTP_PORTS = {587, 465}
+
+
+def _open_smtp(host: str, port: int, timeout: int = 30) -> smtplib.SMTP:
+    """Port 465 is implicit TLS (SMTP_SSL); 587 is a plain connection
+    upgraded with STARTTLS."""
+    if host not in ALLOWED_SMTP_HOSTS or port not in ALLOWED_SMTP_PORTS:
+        raise ValueError(f"Unsupported email provider {host}:{port}.")
+    if port == 465:
+        return smtplib.SMTP_SSL(host, port, timeout=timeout)
+    server = smtplib.SMTP(host, port, timeout=timeout)
+    try:
+        server.starttls()
+    except Exception:
+        server.close()
+        raise
+    return server
+
+
+def _close_smtp(server: smtplib.SMTP) -> None:
+    # A provider that rejects the login often drops the connection; quit()
+    # on it raises SMTPServerDisconnected, which used to replace the real
+    # error ("authentication failed") with "please run connect() first".
+    try:
+        server.quit()
+    except Exception:
+        pass
+
+
+def verify_smtp_credentials(host: str, port: int, username: str, password: str) -> None:
+    """Sign in to the customer's SMTP server without sending anything.
+    Raises ValueError with a customer-readable reason on failure."""
+    try:
+        server = _open_smtp(host, port, timeout=15)
+    except ValueError:
+        raise
+    except (OSError, smtplib.SMTPException) as e:
+        raise ValueError(f"Could not connect to {host}:{port} ({e}).")
+    try:
+        server.login(username, password)
+    except smtplib.SMTPAuthenticationError as e:
+        detail = e.smtp_error.decode(errors="replace") if isinstance(e.smtp_error, bytes) else str(e.smtp_error)
+        raise ValueError(
+            f"{host} rejected the email/password ({e.smtp_code}). "
+            f"Use an app password, not your normal login password. Provider said: {detail.strip()}"
+        )
+    except smtplib.SMTPException as e:
+        raise ValueError(f"{host} refused the sign-in: {e}")
+    finally:
+        _close_smtp(server)
+
+
 @retry(
     wait=wait_exponential(multiplier=1, min=2, max=10),
     stop=stop_after_attempt(3),
-    retry=retry_if_exception_type((smtplib.SMTPException, ConnectionError, TimeoutError)),
+    # Only transient network failures are retried. Retrying a rejected
+    # login just repeats the failure and can get the account locked.
+    retry=retry_if_exception_type((smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, ConnectionError, TimeoutError)),
     reraise=True,
 )
 def _send_via_smtp(
@@ -133,14 +192,13 @@ def _send_via_smtp(
             filename=pdf_attachment["filename"],
         )
 
-    server = smtplib.SMTP(host, port, timeout=30)
+    server = _open_smtp(host, port)
     try:
-        server.starttls()
         server.login(username, password)
         server.send_message(msg)
         return {"status": "success", "method": "smtp"}
     finally:
-        server.quit()
+        _close_smtp(server)
 
 
 @retry(
@@ -255,7 +313,10 @@ def send_reminder_email(invoice: Any) -> Dict[str, Any]:
     if custom_template:
         subject = _apply_replacements(custom_template.subject, replacements)
         body = _apply_replacements(custom_template.body, replacements)
-        html_body = body.replace('\n', '<br>')
+        # Template bodies are plain text from a textarea and the
+        # substituted values (debtor name, invoice number...) are
+        # user-supplied, so escape before turning newlines into <br>.
+        html_body = html.escape(body).replace('\n', '<br>')
     else:
         subject = f'Reminder: Invoice {invoice.invoice_number} from {company_name} is due'
         html_body = render_template(invoice, pdf_attached=bool(pdf_attachment))

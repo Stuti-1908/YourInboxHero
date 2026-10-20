@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getMe, updateSettings, createBillingPortalSession } from '../api/invoice';
+import { EmailProviders } from './EmailProviders';
+import Templates from './EmailTemplates';
 import './Settings.css';
 import './Forms.css';
 
@@ -39,6 +41,11 @@ export const Settings = () => {
       prev.includes(code) ? prev.filter(d => d !== code) : [...prev, code]
     );
   };
+
+  useEffect(() => {
+    if (loading || !window.location.hash) return;
+    document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [loading]);
 
   useEffect(() => {
     fetchSettings();
@@ -139,12 +146,9 @@ export const Settings = () => {
     <div className="settings-container fade-in">
       <div className="settings-header">
         <div>
-          <h2>Account Settings</h2>
-          <p>White-label your experience with your brand identity.</p>
+          <h2>Settings</h2>
+          <p>Billing, branding, how reminders are sent, and what they say.</p>
         </div>
-        <button className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Settings'}
-        </button>
       </div>
       
       {message && <div style={{ marginBottom: '20px', padding: '10px', background: 'var(--color-bg-alt)', borderRadius: '8px', color: 'var(--color-primary)' }}>{message}</div>}
@@ -193,13 +197,6 @@ export const Settings = () => {
             )}
           </div>
         </div>
-      </div>
-
-      <div className="settings-card" style={{ marginTop: '20px' }}>
-        <h3>Email Provider</h3>
-        <p style={{ fontSize: '0.9rem', color: 'var(--color-text-light)' }}>
-          To connect or change your email provider, go to the <strong>Email Setup</strong> tab in the navigation bar.
-        </p>
       </div>
 
       <div className="settings-card" style={{ marginTop: '20px' }}>
@@ -266,8 +263,20 @@ export const Settings = () => {
             </select>
           </div>
         </div>
+        <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save branding & call hours'}
+          </button>
+        </div>
       </div>
 
+      <div className="settings-card" id="email" style={{ marginTop: '20px' }}>
+        <EmailProviders embedded />
+      </div>
+
+      <div className="settings-card" id="templates" style={{ marginTop: '20px' }}>
+        <Templates embedded />
+      </div>
     </div>
   );
 };

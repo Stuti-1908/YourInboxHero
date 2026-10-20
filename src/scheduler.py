@@ -164,7 +164,7 @@ def run_sms_reminders(db: Session):
         if plan_has_feature(user.subscription_plan, "custom_templates"):
             sms_template = db.query(EmailTemplate).filter(
                 EmailTemplate.user_id == user.id,
-                EmailTemplate.template_type == "overdue"
+                EmailTemplate.template_type == "sms_overdue"
             ).first()
 
         if sms_template:
@@ -356,66 +356,106 @@ def run_document_escalation_sweep(db: Session):
             logger.error("document_escalation_step_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
 
 
+def _group_by_client(requests):
+    """Group document requests by client, preserving query order, so each
+    client gets one SMS/call covering every document they owe."""
+    groups = {}
+    for req in requests:
+        groups.setdefault(req.client_id, []).append(req)
+    return list(groups.values())
+
+
+def _join_titles(titles):
+    quoted = [f'"{t}"' for t in titles]
+    if len(quoted) <= 2:
+        return " and ".join(quoted)
+    return ", ".join(quoted[:-1]) + f" and {quoted[-1]}"
+
+
+# Keeps a grouped SMS to a sane length; anything beyond this is summarised
+# ("and N more") and the client still has every link in their email.
+_MAX_DOCS_PER_SMS = 3
+
+
+def _document_sms_message(client_name, company_name, reqs):
+    if len(reqs) == 1:
+        req = reqs[0]
+        return (
+            f"Hi {client_name}, the document \"{req.title}\" requested by {company_name} is OVERDUE. "
+            f"Please upload it here: {settings.frontend_url}/upload/{req.upload_token}"
+        )
+    shown = reqs[:_MAX_DOCS_PER_SMS]
+    lines = [f"Hi {client_name}, {len(reqs)} documents requested by {company_name} are OVERDUE. Upload links:"]
+    lines += [f"{r.title}: {settings.frontend_url}/upload/{r.upload_token}" for r in shown]
+    if len(reqs) > len(shown):
+        lines.append(f"...and {len(reqs) - len(shown)} more (see your email).")
+    return "\n".join(lines)
+
+
 def run_document_sms_reminders(db: Session):
     """Send SMS reminders for document requests in the SMS escalation
-    tier. Mirrors run_sms_reminders exactly."""
+    tier. Mirrors run_sms_reminders, except a client who owes several
+    documents gets one text listing them (one chase) rather than one text
+    per document."""
     from src.services.ghl_service import send_sms
     from src.services.usage_limits import can_send_chase, record_chase_used
 
     sms_requests = db.query(DocumentRequest).filter(
         DocumentRequest.status == "overdue",
         DocumentRequest.escalation_tier == "sms"
-    ).all()
+    ).order_by(DocumentRequest.due_date, DocumentRequest.title).all()
 
     today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc)
+    due_today = [
+        r for r in sms_requests
+        if not (r.last_reminder_sent and _as_aware_utc(r.last_reminder_sent) >= today_start)
+    ]
 
-    for req in sms_requests:
-        if req.last_reminder_sent and _as_aware_utc(req.last_reminder_sent) >= today_start:
-            continue
-
-        client = req.client
+    for reqs in _group_by_client(due_today):
+        client = reqs[0].client
+        req_ids = [str(r.id) for r in reqs]
         if not client.phone:
-            logger.warning("document_sms_skipped_no_phone", doc_request_id=str(req.id), client_name=client.name)
+            logger.warning("document_sms_skipped_no_phone", doc_request_ids=req_ids, client_name=client.name)
             continue
 
         user = client.user
         if not can_send_chase(user):
             logger.warning("document_sms_skipped_cannot_send_chase",
-                           doc_request_id=str(req.id), user_id=user.id,
+                           doc_request_ids=req_ids, user_id=user.id,
                            subscription_status=user.subscription_status,
                            chases_used=user.chases_used, chases_limit=user.chases_limit)
             continue
 
         company_name = user.company_name or "YourInboxHero"
-        upload_url = f"{settings.frontend_url}/upload/{req.upload_token}"
-        message = (
-            f"Hi {client.name}, the document \"{req.title}\" requested by {company_name} is OVERDUE. "
-            f"Please upload it here: {upload_url}"
-        )
+        message = _document_sms_message(client.name, company_name, reqs)
 
         try:
             success = send_sms(phone=client.phone, message=message, contact_name=client.name, contact_email=client.email)
 
+            now = datetime.now(timezone.utc)
+            for req in reqs:
+                if success:
+                    req.sms_sent_count = (req.sms_sent_count or 0) + 1
+                    req.last_reminder_sent = now
+                _log_reminder(
+                    db, Channel.sms, success,
+                    payload={"title": req.title, "client_phone": client.phone},
+                    document_request_id=req.id,
+                )
             if success:
-                req.sms_sent_count = (req.sms_sent_count or 0) + 1
-                req.last_reminder_sent = datetime.now(timezone.utc)
-                record_chase_used(user, db, channel='sms', invoice_id=str(req.id))
-                logger.info("document_sms_sent", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
-            _log_reminder(
-                db, Channel.sms, success,
-                payload={"title": req.title, "client_phone": client.phone},
-                document_request_id=req.id,
-            )
+                record_chase_used(user, db, channel='sms', invoice_id=req_ids[0])
+                logger.info("document_sms_sent", doc_request_ids=req_ids, client_phone=client.phone)
             db.commit()
         except Exception as e:
             db.rollback()
-            logger.error("document_sms_send_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
+            logger.error("document_sms_send_failed", doc_request_ids=req_ids, error=str(e), exc_info=True)
 
 
 def run_document_voice_calls(db: Session):
     """Trigger voice calls for document requests in the voice escalation
-    tier. Mirrors run_voice_calls exactly, including the same
-    plan-tier/consent/quota gates."""
+    tier. Mirrors run_voice_calls, including the same
+    plan-tier/consent/quota gates, except a client who owes several
+    documents gets one call that mentions all of them."""
     from src.services.ghl_service import trigger_voice_call
     from src.services.usage_limits import can_send_chase, record_chase_used
     from src.services.plan_features import plan_has_feature
@@ -424,40 +464,45 @@ def run_document_voice_calls(db: Session):
     voice_requests = db.query(DocumentRequest).filter(
         DocumentRequest.status == "overdue",
         DocumentRequest.escalation_tier == "voice"
-    ).all()
+    ).order_by(DocumentRequest.due_date, DocumentRequest.title).all()
 
-    for req in voice_requests:
-        if req.last_reminder_sent and (datetime.now(timezone.utc) - _as_aware_utc(req.last_reminder_sent)).days < 3:
-            continue
+    due_now = [
+        r for r in voice_requests
+        if not (r.last_reminder_sent and (datetime.now(timezone.utc) - _as_aware_utc(r.last_reminder_sent)).days < 3)
+    ]
 
-        client = req.client
+    for reqs in _group_by_client(due_now):
+        client = reqs[0].client
+        req_ids = [str(r.id) for r in reqs]
 
         if not client.phone:
-            logger.warning("document_voice_call_skipped_no_phone", doc_request_id=str(req.id), client_name=client.name)
+            logger.warning("document_voice_call_skipped_no_phone", doc_request_ids=req_ids, client_name=client.name)
             continue
 
         if not client.voice_call_consent:
-            logger.info("document_voice_call_skipped_no_consent", doc_request_id=str(req.id), client_id=client.id)
+            logger.info("document_voice_call_skipped_no_consent", doc_request_ids=req_ids, client_id=client.id)
             continue
 
         user = client.user
         if not plan_has_feature(user.subscription_plan, "voice_escalation"):
-            logger.info("document_voice_call_skipped_plan_tier", doc_request_id=str(req.id), user_id=user.id, plan=user.subscription_plan)
+            logger.info("document_voice_call_skipped_plan_tier", doc_request_ids=req_ids, user_id=user.id, plan=user.subscription_plan)
             continue
         if not can_send_chase(user):
             logger.warning("document_voice_call_skipped_cannot_send_chase",
-                           doc_request_id=str(req.id), user_id=user.id,
+                           doc_request_ids=req_ids, user_id=user.id,
                            subscription_status=user.subscription_status,
                            chases_used=user.chases_used, chases_limit=user.chases_limit)
             continue
         if not is_within_calling_window(user):
-            logger.info("document_voice_call_skipped_outside_calling_window", doc_request_id=str(req.id), user_id=user.id)
+            logger.info("document_voice_call_skipped_outside_calling_window", doc_request_ids=req_ids, user_id=user.id)
             continue
 
         company_name = user.company_name or "YourInboxHero"
+        single = len(reqs) == 1
+        titles = _join_titles([r.title for r in reqs])
         message = (
-            f"This is an automated call from {company_name}. The document \"{req.title}\" "
-            f"we requested is overdue. Please upload it as soon as possible."
+            f"This is an automated call from {company_name}. The {'document' if single else 'documents'} {titles} "
+            f"we requested {'is' if single else 'are'} overdue. Please upload {'it' if single else 'them'} as soon as possible."
         )
 
         try:
@@ -468,25 +513,28 @@ def run_document_voice_calls(db: Session):
                 contact_email=client.email,
                 company_name=company_name,
                 reason="document",
-                item_description=req.title,
+                item_description=titles.replace('"', ''),
                 amount="",
-                due_date=req.due_date.isoformat(),
+                due_date=reqs[0].due_date.isoformat(),
             )
 
+            now = datetime.now(timezone.utc)
+            for req in reqs:
+                if success:
+                    req.voice_call_count = (req.voice_call_count or 0) + 1
+                    req.last_reminder_sent = now
+                _log_reminder(
+                    db, Channel.voice, success,
+                    payload={"title": req.title, "client_phone": client.phone},
+                    document_request_id=req.id,
+                )
             if success:
-                req.voice_call_count = (req.voice_call_count or 0) + 1
-                req.last_reminder_sent = datetime.now(timezone.utc)
-                record_chase_used(user, db, channel='voice', invoice_id=str(req.id))
-                logger.info("document_voice_call_triggered", doc_request_id=str(req.id), title=req.title, client_phone=client.phone)
-            _log_reminder(
-                db, Channel.voice, success,
-                payload={"title": req.title, "client_phone": client.phone},
-                document_request_id=req.id,
-            )
+                record_chase_used(user, db, channel='voice', invoice_id=req_ids[0])
+                logger.info("document_voice_call_triggered", doc_request_ids=req_ids, client_phone=client.phone)
             db.commit()
         except Exception as e:
             db.rollback()
-            logger.error("document_voice_call_failed", doc_request_id=str(req.id), error=str(e), exc_info=True)
+            logger.error("document_voice_call_failed", doc_request_ids=req_ids, error=str(e), exc_info=True)
 
 
 SWEEP_RUN_ID = "daily_sweep"

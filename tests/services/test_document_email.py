@@ -115,5 +115,50 @@ def test_render_includes_upload_link_and_branding():
 
     assert 'Test Company' in html
     assert 'doc_abc123' in html
-    assert 'Upload Document' in html
+    assert 'Upload W-9 Tax Form' in html
     assert 'W-9 Tax Form' in html
+
+
+def test_render_and_send_grouped_documents_in_one_email(monkeypatch):
+    monkeypatch.setattr('src.services.email.settings.resend_api_key', 'test-key')
+    first = _make_dummy_doc_request()
+    second = _make_dummy_doc_request(status='overdue')
+    second.id = "second-id"
+    second.title = "Signed Lease"
+    second.upload_token = "doc_second"
+    second.client = first.client
+
+    html = render_document_request_email([first, second])
+    assert 'doc_abc123' in html and 'doc_second' in html
+    assert 'Upload W-9 Tax Form' in html and 'Upload Signed Lease' in html
+    assert 'Document Overdue' in html  # any overdue doc escalates the banner
+
+    with patch('src.services.document_email._send_via_resend', return_value={"method": "resend"}) as mock_resend:
+        send_document_request_email([first, second])
+    mock_resend.assert_called_once()
+    assert mock_resend.call_args.kwargs['subject'] == 'Reminder: 2 documents requested'
+
+
+def test_grouped_send_refuses_mixed_clients():
+    a = _make_dummy_doc_request()
+    b = _make_dummy_doc_request()
+
+    class OtherClient:
+        email = 'someone-else@example.com'
+        name = 'Other'
+        user = a.client.user
+    b.client = OtherClient()
+    with pytest.raises(ValueError):
+        send_document_request_email([a, b])
+
+
+def test_render_escapes_user_supplied_html():
+    """Titles/descriptions/client names come from users and CSV imports;
+    they must never become live HTML in an email sent from our domain."""
+    doc = _make_dummy_doc_request()
+    doc.title = '<a href="https://evil.example">Pay here</a>'
+    doc.description = '<script>alert(1)</script>'
+    html = render_document_request_email(doc)
+    assert '<a href="https://evil.example">' not in html
+    assert '<script>' not in html
+    assert '&lt;script&gt;' in html
