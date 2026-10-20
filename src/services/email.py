@@ -148,6 +148,12 @@ def verify_smtp_credentials(host: str, port: int, username: str, password: str) 
             f"{host} rejected the email/password ({e.smtp_code}). "
             f"Use an app password, not your normal login password. Provider said: {detail.strip()}"
         )
+    except smtplib.SMTPServerDisconnected:
+        # Gmail often just hangs up on a bad login instead of replying 535.
+        raise ValueError(
+            f"{host} rejected the email/password. "
+            f"Use an app password, not your normal login password."
+        )
     except smtplib.SMTPException as e:
         raise ValueError(f"{host} refused the sign-in: {e}")
     finally:

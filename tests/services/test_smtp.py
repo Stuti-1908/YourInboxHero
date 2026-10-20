@@ -76,3 +76,12 @@ def test_open_smtp_closes_socket_when_starttls_fails():
         with pytest.raises(smtplib.SMTPException):
             email_service._open_smtp("smtp.gmail.com", 587)
     plain.return_value.close.assert_called_once()
+
+
+def test_verify_treats_hangup_during_login_as_rejected_credentials():
+    """Gmail frequently drops the connection on a bad password instead of
+    replying 535; the customer still needs the app-password hint."""
+    with patch("src.services.email._open_smtp") as opener:
+        opener.return_value.login.side_effect = smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+        with pytest.raises(ValueError, match="app password"):
+            email_service.verify_smtp_credentials("smtp.gmail.com", 587, "a@b.com", "bad")
