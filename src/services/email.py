@@ -101,7 +101,7 @@ def _apply_replacements(text: str, replacements: Dict[str, str]) -> str:
 # Customers pick one of these providers in the UI. Enforced on save AND at
 # connect time, so a host saved before the allowlist existed (or written
 # directly to the DB) can't be used to make the server connect elsewhere.
-ALLOWED_SMTP_HOSTS = {"smtp.gmail.com", "smtp.mail.yahoo.com", "smtp.office365.com"}
+ALLOWED_SMTP_HOSTS = {"smtp.gmail.com", "smtp.mail.yahoo.com"}
 ALLOWED_SMTP_PORTS = {587, 465}
 
 

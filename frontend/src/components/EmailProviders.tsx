@@ -7,7 +7,6 @@ interface ProviderConfig {
   host: string;
   port: string;
   instructions: string[];
-  warning?: string;
 }
 
 const PROVIDERS: ProviderConfig[] = [
@@ -36,19 +35,6 @@ const PROVIDERS: ProviderConfig[] = [
       'Copy the generated password.',
       'Paste it as your SMTP Password below.'
     ]
-  },
-  {
-    name: 'Outlook / Microsoft 365',
-    host: 'smtp.office365.com',
-    port: '587',
-    instructions: [
-      'Go to Microsoft Account → Security → Advanced Security.',
-      'Under "App passwords", click "Create a new app password".',
-      'Copy the generated password.',
-      'Use your full Outlook email as the SMTP Username.',
-      'Paste the app password as your SMTP Password below.'
-    ],
-    warning: 'Microsoft is switching off password-based sending (SMTP AUTH) for Microsoft 365 work accounts, and many organisations already have it disabled. If connecting fails, your IT admin must enable SMTP AUTH for this mailbox — or leave this disconnected and reminders will go from our system address.'
   }
 ];
 
@@ -216,12 +202,6 @@ export const EmailProviders = ({ embedded = false }: { embedded?: boolean }) => 
               ))}
             </ol>
           </div>
-
-          {selectedProvider.warning && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 16px', marginBottom: '20px', color: '#991b1b', fontSize: '0.85rem', lineHeight: 1.5 }}>
-              {selectedProvider.warning}
-            </div>
-          )}
 
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-light)', marginBottom: '16px' }}>
             We sign in to your mailbox once to check these details before saving. Nothing is sent.

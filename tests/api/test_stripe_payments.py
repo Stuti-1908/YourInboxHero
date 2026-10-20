@@ -45,7 +45,7 @@ def test_stripe_object_like_fixture_matches_real_sdk_v16_behavior():
     ability to catch this exact bug class again (plain dict .get() working
     in tests while the real stripe.Session/.Subscription/.Invoice raises
     AttributeError in production is what let the original bug ship)."""
-    obj = StripeObjectLike({"customer": "cus_x", "metadata": {"plan": "growth"}})
+    obj = StripeObjectLike({"customer": "cus_x", "metadata": {"app": "yourinboxhero", "plan": "growth"}})
     assert obj["customer"] == "cus_x"
     assert obj["metadata"]["plan"] == "growth"
     try:
@@ -240,7 +240,7 @@ def test_webhook_activates_subscription_on_verified_event(monkeypatch):
                 "subscription": "sub_fake123",
                 "customer_email": username,
                 "payment_status": "paid",
-                "metadata": {"plan": "growth", "email": username},
+                "metadata": {"app": "yourinboxhero", "plan": "growth", "email": username},
             })
         },
     }
@@ -600,7 +600,7 @@ def _checkout_event(event_id, event_type, username, payment_status):
                 "subscription": f"sub_{event_id}",
                 "customer_email": username,
                 "payment_status": payment_status,
-                "metadata": {"plan": "scale", "email": username},
+                "metadata": {"app": "yourinboxhero", "plan": "scale", "email": username},
             })
         },
     }
@@ -656,3 +656,16 @@ def test_webhook_activates_free_trial_checkout(monkeypatch):
 
     _post_event(_checkout_event("evt_trial1", "checkout.session.completed", username, "no_payment_required"))
     assert _status_of(username) == ("active", "scale")
+
+
+def test_webhook_ignores_checkout_from_another_product_on_same_account(monkeypatch):
+    """SOP-bot etc. share the Stripe account; their checkouts reach this
+    endpoint too and must never activate anything here."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    username = _make_user()
+    ev = _checkout_event("evt_other_app1", "checkout.session.completed", username, "paid")
+    ev["data"]["object"] = StripeObjectLike({**ev["data"]["object"], "metadata": {"plan": "scale", "email": username}})
+    resp = _post_event(ev)
+    assert resp.status_code == 200 and "not created by YourInboxHero" in resp.json()["msg"]
+    assert _status_of(username)[0] != "active"

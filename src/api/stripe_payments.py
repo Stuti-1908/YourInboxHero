@@ -37,6 +37,10 @@ PLANS = {
 }
 
 
+# Marks checkout sessions created by this app (see stripe_webhook).
+APP_TAG = "yourinboxhero"
+
+
 def _stripe_get(obj, key, default=None):
     """dict-style .get() for Stripe SDK v16+ typed resource objects.
 
@@ -103,7 +107,7 @@ def create_checkout_session(request: Request, data: CreateCheckoutSessionRequest
             line_items=[{"price": price_id, "quantity": 1}],
             customer_email=data.email,
             client_reference_id=data.email,
-            metadata={"plan": data.plan, "email": data.email},
+            metadata={"app": APP_TAG, "plan": data.plan, "email": data.email},
             success_url=f"{settings.stripe_success_url}?plan={data.plan}&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=settings.stripe_cancel_url,
         )
@@ -163,6 +167,12 @@ async def stripe_webhook(request: Request):
                 db.commit()
                 return {"msg": f"Ignored — payment_status is {payment_status}"}
             metadata = _stripe_get(session, "metadata", {}) or {}
+            # Other products share this Stripe account and Stripe delivers
+            # every account event to every endpoint, so only act on
+            # checkouts this app created.
+            if _stripe_get(metadata, "app") != APP_TAG:
+                db.commit()
+                return {"msg": "Ignored — checkout not created by YourInboxHero"}
             plan = _stripe_get(metadata, "plan")
             email = _stripe_get(metadata, "email") or _stripe_get(session, "customer_email")
 
