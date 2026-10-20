@@ -5,7 +5,7 @@ These are branded as YourInboxHero (the vendor), not the customer's own
 company -- unlike the reminder emails in email.py, which go out under
 the customer's brand to their debtors.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import structlog
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -18,7 +18,9 @@ from src.services.email import _send_via_resend
 
 logger = structlog.get_logger(__name__)
 
-WARNING_THRESHOLD = 0.8  # fraction of chases_limit that triggers the 80% warning
+# Fractions of chases_limit that trigger a warning email, each once per cycle.
+WARNING_THRESHOLD = 0.8
+SECOND_WARNING_THRESHOLD = 0.9
 
 _jinja_env = Environment(loader=FileSystemLoader('templates'), autoescape=select_autoescape(['html']))
 
@@ -63,6 +65,71 @@ def _next_monthly_anniversary(anchor: datetime, after: datetime) -> datetime:
     return candidate
 
 
+def reset_usage_flags(user: User) -> None:
+    """Start a fresh cycle's warnings. Callers reset chases_used themselves."""
+    user.usage_warning_80_sent = False
+    user.usage_warning_90_sent = False
+    user.usage_limit_reached_sent = False
+
+
+def next_usage_reset(user: User, now: datetime | None = None) -> datetime | None:
+    """When this account's reminder count next goes back to 0: the monthly
+    anniversary of subscription_started_at, which is both Stripe's billing
+    anchor and the anchor reset_admin_invite_usage uses."""
+    anchor = _as_aware_utc(user.subscription_started_at)
+    if anchor is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    nxt = _next_monthly_anniversary(anchor, now)
+    if nxt <= now:  # exactly on the anniversary second: the next one
+        nxt = _next_monthly_anniversary(anchor, nxt.replace(microsecond=0) + timedelta(seconds=1))
+    return nxt
+
+
+# What each plan includes, as the customer sees it. Mirrors the pricing page
+# (LandingPage.tsx) and the gates in plan_features.py.
+PLAN_INCLUDES = {
+    "starter": ["Email and SMS reminders", "PDF invoices", "Document collection"],
+    "growth": ["Email, SMS and AI voice call reminders", "Your own reminder templates",
+               "Your logo on every invoice", "Send from your own Gmail or Yahoo", "Document collection"],
+    "scale": ["Email, SMS and AI voice call reminders", "Your own reminder templates",
+              "Your logo on every invoice", "Send from your own Gmail or Yahoo", "Document collection",
+              "Priority support"],
+}
+
+
+def send_welcome_email(user: User) -> None:
+    """Sent once the account can actually be used: when a paid or granted
+    account verifies its email, or when an existing verified account's
+    plan is activated by Stripe. Best-effort; never raises."""
+    from src.services.plan_features import plan_has_feature
+
+    plan = (user.subscription_plan or "").lower()
+    if user.subscription_status != "active" or plan not in PLAN_INCLUDES:
+        return
+    try:
+        settings = get_settings()
+        resets = next_usage_reset(user)
+        tmpl = _jinja_env.get_template('welcome_email.html')
+        html = tmpl.render(
+            company_name=user.company_name or 'there',
+            plan_label=_plan_label(plan),
+            limit=user.chases_limit or 0,
+            resets_on=f"{resets.day} {resets:%B %Y}" if resets else None,
+            features=PLAN_INCLUDES[plan],
+            can_connect_mailbox=plan_has_feature(plan, "custom_smtp"),
+            dashboard_url=f"{settings.frontend_url}/dashboard/debtors?new=1",
+        )
+        _send_via_resend(
+            to_email=user.username,
+            subject=f"Welcome to YourInboxHero: your {_plan_label(plan)} plan is active",
+            html_body=html,
+        )
+        logger.info("welcome_email_sent", user_id=user.id, plan=plan)
+    except Exception as exc:
+        logger.error("welcome_email_failed", user_id=user.id, error=str(exc))
+
+
 def reset_admin_invite_usage(db: Session) -> int:
     """Monthly chases_used reset for accounts with no Stripe subscription
     to trigger invoice.payment_succeeded (admin-email and invite-code
@@ -94,8 +161,7 @@ def reset_admin_invite_usage(db: Session) -> int:
             continue
 
         user.chases_used = 0
-        user.usage_warning_80_sent = False
-        user.usage_limit_reached_sent = False
+        reset_usage_flags(user)
         user.usage_reset_at = now
         reset_count += 1
         logger.info("admin_invite_usage_reset", user_id=user.id)
@@ -120,12 +186,22 @@ def maybe_send_usage_warnings(user: User, db: Session) -> None:
         return
 
     try:
+        # Only the highest newly-crossed threshold sends, and it marks the
+        # lower ones as sent too, so a jump from 75% to 95% sends one email.
         if used >= limit and not user.usage_limit_reached_sent:
             _send_limit_reached_email(user)
-            db.execute(update(User).where(User.id == user.id).values(usage_limit_reached_sent=True))
+            db.execute(update(User).where(User.id == user.id).values(
+                usage_limit_reached_sent=True, usage_warning_90_sent=True, usage_warning_80_sent=True))
             db.flush()
-        elif used >= limit * WARNING_THRESHOLD and not user.usage_warning_80_sent:
-            _send_approaching_limit_email(user, used, limit)
+        elif user.usage_limit_reached_sent:
+            pass  # a higher warning already went out this cycle
+        elif used >= limit * SECOND_WARNING_THRESHOLD and not user.usage_warning_90_sent:
+            _send_approaching_limit_email(user, used, limit, percent=90)
+            db.execute(update(User).where(User.id == user.id).values(
+                usage_warning_90_sent=True, usage_warning_80_sent=True))
+            db.flush()
+        elif used >= limit * WARNING_THRESHOLD and not user.usage_warning_80_sent and not user.usage_warning_90_sent:
+            _send_approaching_limit_email(user, used, limit, percent=80)
             db.execute(update(User).where(User.id == user.id).values(usage_warning_80_sent=True))
             db.flush()
     except Exception as exc:
@@ -150,7 +226,7 @@ def _render_usage_warning(
     )
 
 
-def _send_approaching_limit_email(user: User, used: int, limit: int) -> None:
+def _send_approaching_limit_email(user: User, used: int, limit: int, percent: int = 80) -> None:
     remaining = limit - used
     subject = f"You've used {used} of {limit} reminders this month"
     message_body = (
@@ -161,11 +237,11 @@ def _send_approaching_limit_email(user: User, used: int, limit: int) -> None:
     )
     html = _render_usage_warning(
         user, used, limit,
-        banner_text="80% of plan used", banner_color="#d97706",
+        banner_text=f"{percent}% of plan used", banner_color="#d97706" if percent < 90 else "#ea580c",
         message_body=message_body,
     )
     _send_via_resend(to_email=user.username, subject=subject, html_body=html)
-    logger.info("usage_warning_80_sent", user_id=user.id, used=used, limit=limit)
+    logger.info("usage_warning_sent", user_id=user.id, percent=percent, used=used, limit=limit)
 
 
 def _send_limit_reached_email(user: User) -> None:

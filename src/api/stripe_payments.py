@@ -20,6 +20,7 @@ from src.db import SessionLocal, get_db
 from src.models.user import User
 from src.models.pending_subscription import PendingSubscription
 from src.models.processed_stripe_event import ProcessedStripeEvent
+from src.services.account_notifications import reset_usage_flags, send_welcome_email
 from src.rate_limit import limiter
 from src.auth import get_current_user
 from fastapi import Depends
@@ -207,8 +208,12 @@ async def stripe_webhook(request: Request):
             user.stripe_subscription_id = _stripe_get(session, "subscription")
             user.chases_limit = plan_config["chases"]
             user.chases_used = 0
+            reset_usage_flags(user)
             db.commit()
             logger.info("subscription_activated", email=email, plan=plan)
+            # Unverified accounts get the welcome email when they verify.
+            if user.email_verified:
+                send_welcome_email(user)
             return {"msg": f"Subscription activated for {email}: {plan_config['name']}"}
 
         elif event_type == "customer.subscription.updated":
@@ -275,8 +280,7 @@ async def stripe_webhook(request: Request):
                     logger.info("subscription_reactivated_after_payment", user_id=user.id)
                 if billing_reason == "subscription_cycle":
                     user.chases_used = 0
-                    user.usage_warning_80_sent = False
-                    user.usage_limit_reached_sent = False
+                    reset_usage_flags(user)
                     logger.info("usage_reset_on_renewal", user_id=user.id)
                 db.commit()
             return {"msg": "Payment success recorded"}

@@ -23,7 +23,7 @@ from src.auth import (
     get_current_user,
 )
 from src.rate_limit import limiter
-from src.services.account_notifications import send_verification_email
+from src.services.account_notifications import next_usage_reset, send_verification_email, send_welcome_email
 from src.services.secrets import encrypt_secret
 from src.services.email import ALLOWED_SMTP_HOSTS, ALLOWED_SMTP_PORTS, verify_smtp_credentials
 import structlog
@@ -219,6 +219,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     user.email_verified = True
     user.email_verification_token = None  # single-use
     db.commit()
+    send_welcome_email(user)
     return {"msg": "Email verified successfully. You can now log in."}
 
 
@@ -271,6 +272,7 @@ class UserSettingsUpdate(BaseModel):
 
 @router.get("/users/me")
 def get_me(current_user: User = Depends(get_current_user)):
+    resets_at = next_usage_reset(current_user)
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -294,7 +296,8 @@ def get_me(current_user: User = Depends(get_current_user)):
         "subscription_plan": current_user.subscription_plan,
         "subscription_status": current_user.subscription_status,
         "chases_limit": current_user.chases_limit or 0,
-        "chases_used": current_user.chases_used or 0
+        "chases_used": current_user.chases_used or 0,
+        "usage_resets_at": resets_at.isoformat() if resets_at else None,
     }
 
 

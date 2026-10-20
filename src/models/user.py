@@ -44,6 +44,7 @@ class User(Base):
     # invoice.payment_succeeded webhook, and the admin/invite monthly
     # reset below).
     usage_warning_80_sent = Column(Boolean, nullable=False, default=False)
+    usage_warning_90_sent = Column(Boolean, nullable=False, default=False)
     usage_limit_reached_sent = Column(Boolean, nullable=False, default=False)
     # Stripe-billed accounts get chases_used reset by invoice.payment_succeeded
     # (billing_reason=subscription_cycle). Admin/invite-granted accounts have

@@ -669,3 +669,31 @@ def test_webhook_ignores_checkout_from_another_product_on_same_account(monkeypat
     resp = _post_event(ev)
     assert resp.status_code == 200 and "not created by YourInboxHero" in resp.json()["msg"]
     assert _status_of(username)[0] != "active"
+
+
+def test_reactivation_resets_warnings_and_welcomes_verified_user(monkeypatch):
+    """A returning customer must get fresh 80/90/100% warnings in the new
+    cycle, and a welcome email for the plan they just bought."""
+    from src.api import stripe_payments
+    monkeypatch.setattr(stripe_payments.settings, "stripe_webhook_secret", "whsec_fake")
+    username = _make_user()
+    session = SessionLocal()
+    try:
+        u = session.query(User).filter(User.username == username).first()
+        u.email_verified = True
+        u.usage_warning_80_sent = u.usage_warning_90_sent = u.usage_limit_reached_sent = True
+        session.commit()
+    finally:
+        session.close()
+
+    with patch("src.services.account_notifications._send_via_resend") as mock_send:
+        _post_event(_checkout_event("evt_react1", "checkout.session.completed", username, "paid"))
+
+    session = SessionLocal()
+    try:
+        u = session.query(User).filter(User.username == username).first()
+        assert u.subscription_status == "active"
+        assert not (u.usage_warning_80_sent or u.usage_warning_90_sent or u.usage_limit_reached_sent)
+    finally:
+        session.close()
+    assert mock_send.call_args.kwargs["subject"] == "Welcome to YourInboxHero: your Scale plan is active"

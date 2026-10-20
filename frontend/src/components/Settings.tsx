@@ -12,6 +12,7 @@ export const Settings = () => {
   const [billingLoading, setBillingLoading] = useState(false);
   const [subscriptionPlan, setSubscriptionPlan] = useState('');
   const [subscriptionStatus, setSubscriptionStatus] = useState('');
+  const [usage, setUsage] = useState<{ used: number; limit: number; resetsAt: string | null }>({ used: 0, limit: 0, resetsAt: null });
 
   const [settings, setSettings] = useState({
     company_name: '',
@@ -72,6 +73,7 @@ export const Settings = () => {
       setVoiceCallTimezone(data.voice_call_timezone || 'America/New_York');
       setSubscriptionPlan(data.subscription_plan || '');
       setSubscriptionStatus(data.subscription_status || '');
+      setUsage({ used: data.chases_used ?? 0, limit: data.chases_limit ?? 0, resetsAt: data.usage_resets_at ?? null });
     } catch (err) {
       console.error(err);
     } finally {
@@ -178,6 +180,28 @@ export const Settings = () => {
             {billingLoading ? 'Opening...' : 'Manage Billing'}
           </button>
         </div>
+        {usage.limit > 0 && (() => {
+          const pct = Math.min(100, Math.round((usage.used / usage.limit) * 100));
+          const color = pct >= 100 ? 'var(--color-status-error, #c0392b)' : pct >= 80 ? '#d97706' : 'var(--color-primary)';
+          const resets = usage.resetsAt ? new Date(usage.resetsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+          return (
+            <div style={{ marginTop: '18px' }} aria-label="Reminder usage this month">
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', fontSize: '0.9rem' }}>
+                <span><strong>{usage.used}</strong> of {usage.limit} reminders used this month</span>
+                {resets && <span style={{ color: 'var(--color-text-light)' }}>Resets {resets}</span>}
+              </div>
+              <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+                style={{ height: '8px', borderRadius: '999px', background: 'var(--color-bg-alt)', marginTop: '8px', overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.3s ease' }} />
+              </div>
+              {pct >= 100 ? (
+                <p style={{ fontSize: '0.85rem', color, marginTop: '8px' }}>Limit reached. Reminders are paused until {resets || 'your plan renews'}, or upgrade for more.</p>
+              ) : pct >= 80 ? (
+                <p style={{ fontSize: '0.85rem', color, marginTop: '8px' }}>{usage.limit - usage.used} reminders left this month.</p>
+              ) : null}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="settings-card" style={{ marginTop: '20px' }}>
